@@ -107,7 +107,10 @@ def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
         "red"
     )
 
-    sub = [f"Runs: {runs}"]
+    # Status as first sub chip so the list's searchable=True text-filter
+    # finds rules by status — type "paused" / "active" / "error" in the
+    # search box to slice the list. Avoids needing a custom filter widget.
+    sub = [f"[{status}]", f"Runs: {runs}"]
     if last:
         sub.append(f"Last: {last}")
     if created:
