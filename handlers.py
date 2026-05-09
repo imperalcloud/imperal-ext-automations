@@ -18,6 +18,7 @@ from api import (
     patch_rule,
     delete_rule,
     load_event_catalog_cached,
+    fetch_user_role_cached,
 )
 from constants import ACTION_DESC_TRUNCATE_LEN, PROMPT_TRUNCATE_LEN
 from models import CreateAutomationParams, ListAutomationsParams, RuleIdParams
@@ -35,8 +36,15 @@ def _tenant_id(ctx) -> str:
     return getattr(ctx.user, "tenant_id", "default")
 
 
-def _is_admin(ctx) -> bool:
-    return getattr(ctx.user, "role", "") == "admin"
+async def _is_admin(ctx) -> bool:
+    """Authoritative admin check via auth-gw.
+
+    The kernel-side ``ctx.user.role`` is sourced from a Redis cache
+    that defaults to ``"user"`` when stale or unset, so first-party
+    extensions that need real role have to query auth-gw directly
+    (cached per-user via ctx.cache, see api.fetch_user_role_cached).
+    """
+    return await fetch_user_role_cached(ctx) == "admin"
 
 
 def _rule_summary(r: dict) -> dict:
@@ -70,8 +78,9 @@ async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResul
         log.warning("list_automations: fetch failed: %s", exc, exc_info=True)
         return ActionResult.error("Failed to fetch automation rules.")
 
-    user_id = _user_id(ctx)
-    if _is_admin(ctx):
+    user_id  = _user_id(ctx)
+    is_admin = await _is_admin(ctx)
+    if is_admin:
         rules = all_rules
         for r in rules:
             if r.get("user_id") != user_id:
@@ -85,16 +94,16 @@ async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResul
         rules = [r for r in rules if r.get("status") == params.status]
 
     summary = (
-        f"You have {len(rules)} {params.status or 'automation'} rule(s){scope_note}"
-        if not _is_admin(ctx)
-        else f"System has {len(rules)} {params.status or 'automation'} rule(s){scope_note}"
+        f"System has {len(rules)} {params.status or 'automation'} rule(s){scope_note}"
+        if is_admin
+        else f"You have {len(rules)} {params.status or 'automation'} rule(s){scope_note}"
     )
 
     return ActionResult.success(
         data={
             "rules":      [_rule_summary(r) for r in rules],
             "total":      len(rules),
-            "admin_view": _is_admin(ctx),
+            "admin_view": is_admin,
             "filter":     {"status": params.status},
         },
         summary=summary,

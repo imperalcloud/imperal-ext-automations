@@ -7,8 +7,14 @@ from datetime import datetime
 from imperal_sdk import ui
 
 from app import ext
-from api import list_active_rules
-from constants import OWNER_PREFIX_LEN, PROMPT_TRUNCATE_LEN
+from api import list_active_rules, load_event_catalog_cached, fetch_user_role_cached
+from constants import (
+    OWNER_PREFIX_LEN,
+    PROMPT_TRUNCATE_LEN,
+    EVENT_DESC_TRUNCATE_LEN,
+    DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_MAX_PER_HOUR,
+)
 
 log = logging.getLogger("automations")
 
@@ -36,7 +42,8 @@ def _format_date(iso_str: str) -> str:
 async def automations_sidebar(ctx, **kwargs):
     user_id   = ctx.user.imperal_id
     tenant_id = getattr(ctx.user, "tenant_id", "default")
-    is_admin  = getattr(ctx.user, "role", "") == "admin"
+    # Authoritative admin check — kernel ctx.user.role drifts (see api.py).
+    is_admin = await fetch_user_role_cached(ctx) == "admin"
 
     try:
         all_rules = await list_active_rules(ctx, tenant_id=tenant_id)
@@ -65,11 +72,19 @@ async def automations_sidebar(ctx, **kwargs):
 
     # ── Rule list ─────────────────────────────────────────────────────── #
     if not rules:
-        children.append(ui.Empty(
-            message="No automation rules yet",
-            icon="Bot",
-            action=ui.Send("Create an automation that checks my email every morning"),
-        ))
+        # Explicit Button (don't rely on Empty.action — frontend renders that
+        # as a generic 'Try again' label which doesn't match our intent).
+        children.append(ui.Stack([
+            ui.Empty(message="No automation rules yet", icon="Bot"),
+            ui.Button(
+                "Create your first automation",
+                icon="Plus",
+                variant="primary",
+                on_click=ui.Send(
+                    "Create an automation that runs every morning at 9 AM",
+                ),
+            ),
+        ], gap=2))
     else:
         items = [_rule_list_item(r, is_admin=is_admin, viewer_id=user_id) for r in rules]
         children.append(ui.Divider(f"Rules ({total})"))
@@ -136,4 +151,160 @@ def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
             "on_click": ui.Call(toggle_fn, rule_id=rid),
             "label":    toggle_label,
         }],
+    )
+
+
+# ─── Center panel: rule editor + dashboard ────────────────────────────── #
+
+@ext.panel(
+    "center",
+    slot="center",
+    title="Automation Workshop",
+    icon="Workflow",
+    refresh="on_event:rule_created,rule_paused,rule_resumed,rule_deleted",
+)
+async def automations_center(ctx, **kwargs):
+    """Center workshop: rule creator form + per-rule outcomes dashboard."""
+    user_id   = ctx.user.imperal_id
+    tenant_id = getattr(ctx.user, "tenant_id", "default")
+    is_admin  = await fetch_user_role_cached(ctx) == "admin"
+
+    try:
+        catalog = await load_event_catalog_cached(ctx)
+    except Exception as exc:
+        log.warning("center panel: catalog fetch failed: %s", exc, exc_info=True)
+        catalog = None
+
+    try:
+        all_rules = await list_active_rules(ctx, tenant_id=tenant_id)
+    except Exception as exc:
+        log.warning("center panel: rule fetch failed: %s", exc, exc_info=True)
+        all_rules = []
+
+    rules = all_rules if is_admin else [r for r in all_rules if r.get("user_id") == user_id]
+
+    # ── Stats strip ─────────────────────────────────────────────────────
+    total       = len(rules)
+    triggers    = sum(r.get("trigger_count", 0) for r in rules)
+    successes   = sum(r.get("success_count", 0) for r in rules)
+    failures    = sum(r.get("fail_count", 0) for r in rules)
+    success_rate = (
+        f"{int(100 * successes / triggers)}%" if triggers else "—"
+    )
+
+    stats_strip = ui.Stats(children=[
+        ui.Stat(label="Rules",        value=str(total),       icon="Workflow"),
+        ui.Stat(label="Triggers",     value=str(triggers),    icon="Zap"),
+        ui.Stat(label="Successes",    value=str(successes),   icon="Check", color="green"),
+        ui.Stat(label="Failures",     value=str(failures),    icon="X",     color="red"),
+        ui.Stat(label="Success rate", value=success_rate,     icon="TrendingUp"),
+    ])
+
+    # ── Rule editor form ────────────────────────────────────────────────
+    if catalog and catalog.entries:
+        event_options = [
+            {
+                "value": e.event_type,
+                "label": f"{e.event_type} — {e.description[:EVENT_DESC_TRUNCATE_LEN]}".rstrip(" —"),
+            }
+            for e in catalog.entries
+        ]
+    else:
+        event_options = [
+            {"value": "system.scheduled", "label": "system.scheduled — cron timer"},
+            {"value": "email.received",   "label": "email.received — every incoming mail"},
+            {"value": "notes.created",    "label": "notes.created — when a note is created"},
+        ]
+
+    editor = ui.Card(
+        title="New rule",
+        subtitle="Pick a trigger event, describe what should happen, set safety caps.",
+        children=[
+            ui.Form(
+                action="create_automation",
+                submit_label="Create rule",
+                children=[
+                    ui.Select(
+                        param_name="event_type",
+                        placeholder="Trigger event…",
+                        options=event_options,
+                    ),
+                    ui.TextArea(
+                        param_name="action_description",
+                        placeholder="What should happen when the trigger fires? Plain language.",
+                        rows=3,
+                    ),
+                    ui.Input(
+                        param_name="schedule",
+                        placeholder="Cron (only for system.scheduled), e.g. '0 9 * * *'",
+                    ),
+                    ui.Slider(
+                        param_name="cooldown_seconds",
+                        label=f"Cooldown (s) — min seconds between triggers",
+                        min=10, max=3600, value=DEFAULT_COOLDOWN_SECONDS, step=10,
+                    ),
+                    ui.Slider(
+                        param_name="max_per_hour",
+                        label=f"Max triggers per hour",
+                        min=1, max=200, value=DEFAULT_MAX_PER_HOUR, step=1,
+                    ),
+                ],
+            ),
+        ],
+    )
+
+    # ── Per-rule outcomes table ─────────────────────────────────────────
+    if rules:
+        outcomes_rows = [
+            {
+                "rule":     (r.get("prompt") or "")[:PROMPT_TRUNCATE_LEN],
+                "status":   r.get("status", "unknown"),
+                "triggers": str(r.get("trigger_count", 0)),
+                "ok":       str(r.get("success_count", 0)),
+                "fail":     str(r.get("fail_count", 0)),
+                "last_err": (r.get("last_error") or "")[:60],
+            }
+            for r in rules
+        ]
+        outcomes = ui.DataTable(
+            columns=[
+                ui.DataColumn(key="rule",     label="Rule"),
+                ui.DataColumn(key="status",   label="Status"),
+                ui.DataColumn(key="triggers", label="Runs"),
+                ui.DataColumn(key="ok",       label="OK"),
+                ui.DataColumn(key="fail",     label="Fail"),
+                ui.DataColumn(key="last_err", label="Last error"),
+            ],
+            rows=outcomes_rows,
+        )
+    else:
+        outcomes = ui.Empty(
+            message="No execution data yet — rules trigger as their events fire.",
+            icon="History",
+        )
+
+    # ── Tips ────────────────────────────────────────────────────────────
+    tips = ui.Markdown(
+        "**How automations work**\n\n"
+        "- A rule fires whenever its trigger event arrives. "
+        "Pick from the dropdown — the catalog is refreshed every 5 min.\n"
+        "- For `system.scheduled` rules, fill the **schedule** field "
+        "with a cron expression (`'0 9 * * *'` = every day at 09:00 UTC).\n"
+        "- The **cooldown** prevents firing on every event in a burst — "
+        "good for `email.received` if you only care about the first one a minute.\n"
+        "- The **max-per-hour** is the hard safety cap; even a misbehaving "
+        "trigger can't blow past it.\n"
+    )
+
+    return ui.Stack(
+        children=[
+            stats_strip,
+            editor,
+            ui.Divider(f"Recent outcomes ({total})"),
+            outcomes,
+            ui.Divider("Tips"),
+            tips,
+        ],
+        gap=3,
+        className="p-4 max-w-3xl mx-auto",
     )

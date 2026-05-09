@@ -20,8 +20,10 @@ from constants import (
     HTTP_TIMEOUT_SECONDS,
     CATALOG_CACHE_KEY,
     CATALOG_CACHE_TTL_SECONDS,
+    USER_ROLE_CACHE_KEY,
+    USER_ROLE_CACHE_TTL_SECONDS,
 )
-from models import EventCatalog, CatalogEntry
+from models import EventCatalog, CatalogEntry, UserRoleSnapshot
 
 log = logging.getLogger("automations")
 
@@ -142,3 +144,33 @@ async def load_event_catalog_cached(ctx) -> EventCatalog:
         fetcher=_fetch,
         ttl_seconds=CATALOG_CACHE_TTL_SECONDS,
     )
+
+
+# ─── Authoritative user role (workaround for kernel ctx.user.role drift) ── #
+
+async def fetch_user_role_cached(ctx) -> str:
+    """Return the user's role from auth-gw, cached per-user via ctx.cache.
+
+    The kernel-side context-factory pulls role from a stale-prone path
+    (``imperal:user_info:<uid>`` Redis cache + fallback default), so
+    extensions that need authoritative role for capability gating
+    should query auth-gw directly. ``ctx.cache`` is per-(app_id, user)
+    by design so the entry is correctly user-scoped.
+    """
+    async def _fetch() -> UserRoleSnapshot:
+        resp = await ctx.http.get(
+            _url(f"/v1/users/{ctx.user.imperal_id}"),
+            headers=_service_headers(),
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        if resp.status_code == 200 and isinstance(resp.body, dict):
+            return UserRoleSnapshot(role=resp.body.get("role", ""))
+        return UserRoleSnapshot(role="")
+
+    snap = await ctx.cache.get_or_fetch(
+        key=USER_ROLE_CACHE_KEY,
+        model=UserRoleSnapshot,
+        fetcher=_fetch,
+        ttl_seconds=USER_ROLE_CACHE_TTL_SECONDS,
+    )
+    return snap.role

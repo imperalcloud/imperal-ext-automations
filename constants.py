@@ -18,5 +18,9 @@ DEFAULT_MAX_PER_HOUR     = 10
 CATALOG_CACHE_KEY         = "event_catalog"
 CATALOG_CACHE_TTL_SECONDS = 300
 
+# ctx.cache key + TTL for authoritative user-role lookup (per-user namespace)
+USER_ROLE_CACHE_KEY         = "user_role"
+USER_ROLE_CACHE_TTL_SECONDS = 60
+
 # HTTP transport
 HTTP_TIMEOUT_SECONDS = 15

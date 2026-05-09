@@ -66,3 +66,13 @@ class EventCatalog(BaseModel):
     @property
     def valid_event_types(self) -> set[str]:
         return {e.event_type for e in self.entries if e.event_type}
+
+
+class UserRoleSnapshot(BaseModel):
+    """Authoritative user role from auth-gw, cached via ctx.cache.
+
+    Workaround for kernel-side ctx.user.role unreliability — at the
+    panel/handler boundary we hit auth-gw `/v1/users/{uid}` directly
+    and cache the result for a minute. (See I-FIRSTPARTY-ADMIN-VIEW.)
+    """
+    role: str = ""
