@@ -1,0 +1,253 @@
+{
+  "manifest_schema_version": 3,
+  "app_id": "automations",
+  "version": "1.3.0",
+  "name": "AI Cloud Agents",
+  "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
+  "icon": "icon.svg",
+  "actions_explicit": true,
+  "capabilities": [
+    "automations:read",
+    "automations:write",
+    "automations:delete",
+    "events:subscribe",
+    "store:read",
+    "store:write",
+    "config:read",
+    "config:write",
+    "ai:complete",
+    "automations:*"
+  ],
+  "tools": [
+    {
+      "name": "tool_automations_chat",
+      "description": "AI Cloud Agents manager — create, list, pause, resume, delete automation rules. Automations trigger on events (email received, note created, schedule) and execute actions.",
+      "scopes": [],
+      "parameters": {
+        "message": {
+          "type": "string",
+          "required": false
+        },
+        "kwargs": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "synthetic": false
+    },
+    {
+      "name": "skeleton_automations_stats",
+      "description": "Background refresh: count user's active rules for skeleton context.",
+      "scopes": [],
+      "parameters": {
+        "kwargs": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "synthetic": false
+    },
+    {
+      "name": "__panel__sidebar",
+      "description": "Panel: AI Agents",
+      "scopes": [],
+      "parameters": {
+        "params": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "synthetic": true
+    },
+    {
+      "name": "list_automations",
+      "description": "List all your automation rules with status and execution stats.",
+      "action_type": "read",
+      "chain_callable": false,
+      "effects": [],
+      "params_schema": {},
+      "return_schema": {},
+      "event": "",
+      "scopes": [],
+      "owner_chat_tool": "tool_automations_chat"
+    },
+    {
+      "name": "create_automation",
+      "description": "Create a new automation rule from AVAILABLE TRIGGER EVENTS.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [],
+      "params_schema": {
+        "description": "Create a new automation rule.",
+        "properties": {
+          "event_type": {
+            "description": "Trigger event (e.g. email.received, notes.created)",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "action_description": {
+            "description": "What to do when triggered, in natural language",
+            "title": "Action Description",
+            "type": "string"
+          },
+          "schedule": {
+            "default": "",
+            "description": "Cron expression (system.scheduled only)",
+            "title": "Schedule",
+            "type": "string"
+          },
+          "cooldown_seconds": {
+            "default": 60,
+            "description": "Min seconds between triggers",
+            "title": "Cooldown Seconds",
+            "type": "integer"
+          },
+          "max_per_hour": {
+            "default": 10,
+            "description": "Max triggers per hour",
+            "title": "Max Per Hour",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_type",
+          "action_description"
+        ],
+        "title": "CreateAutomationParams",
+        "type": "object"
+      },
+      "return_schema": {},
+      "event": "rule_created",
+      "scopes": [],
+      "owner_chat_tool": "tool_automations_chat"
+    },
+    {
+      "name": "pause_automation",
+      "description": "Pause an active automation rule temporarily.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [],
+      "params_schema": {
+        "description": "Target a specific rule.",
+        "properties": {
+          "rule_id": {
+            "description": "The rule ID",
+            "title": "Rule Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rule_id"
+        ],
+        "title": "RuleIdParams",
+        "type": "object"
+      },
+      "return_schema": {},
+      "event": "rule_paused",
+      "scopes": [],
+      "owner_chat_tool": "tool_automations_chat"
+    },
+    {
+      "name": "resume_automation",
+      "description": "Resume a paused automation rule. Resets trigger count.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [],
+      "params_schema": {
+        "description": "Target a specific rule.",
+        "properties": {
+          "rule_id": {
+            "description": "The rule ID",
+            "title": "Rule Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rule_id"
+        ],
+        "title": "RuleIdParams",
+        "type": "object"
+      },
+      "return_schema": {},
+      "event": "rule_resumed",
+      "scopes": [],
+      "owner_chat_tool": "tool_automations_chat"
+    },
+    {
+      "name": "delete_automation",
+      "description": "Permanently delete an automation rule.",
+      "action_type": "destructive",
+      "chain_callable": true,
+      "effects": [],
+      "params_schema": {
+        "description": "Target a specific rule.",
+        "properties": {
+          "rule_id": {
+            "description": "The rule ID",
+            "title": "Rule Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rule_id"
+        ],
+        "title": "RuleIdParams",
+        "type": "object"
+      },
+      "return_schema": {},
+      "event": "rule_deleted",
+      "scopes": [],
+      "owner_chat_tool": "tool_automations_chat"
+    },
+    {
+      "name": "get_automation_details",
+      "description": "Get detailed information about a specific automation rule.",
+      "action_type": "read",
+      "chain_callable": false,
+      "effects": [],
+      "params_schema": {
+        "description": "Target a specific rule.",
+        "properties": {
+          "rule_id": {
+            "description": "The rule ID",
+            "title": "Rule Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rule_id"
+        ],
+        "title": "RuleIdParams",
+        "type": "object"
+      },
+      "return_schema": {},
+      "event": "",
+      "scopes": [],
+      "owner_chat_tool": "tool_automations_chat"
+    }
+  ],
+  "signals": [],
+  "schedules": [],
+  "required_scopes": [],
+  "icon_size_bytes": 1011,
+  "events": {
+    "subscribes": [
+      {
+        "type": "automation.triggered",
+        "handler": "on_automation_triggered"
+      }
+    ],
+    "emits": []
+  },
+  "lifecycle": {
+    "on_install": true,
+    "health_check": {
+      "interval_sec": 60
+    }
+  },
+  "lifecycle_hooks": {
+    "on_install": {
+      "signature": "(ctx)"
+    }
+  }
+}
