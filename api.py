@@ -46,9 +46,14 @@ def _url(path: str) -> str:
 # ─── Rule CRUD via Auth GW ────────────────────────────────────────────── #
 
 async def list_active_rules(ctx, *, tenant_id: str) -> list[dict]:
-    """Return active rule dicts for a tenant. Empty list on failure."""
+    """Return ALL rule dicts for a tenant (active + paused + error).
+
+    Despite the legacy name, this hits ``/v1/automations/internal/all``
+    so panels and admin-view see every rule status — the older
+    ``/active`` endpoint silently filtered out paused ones.
+    """
     resp = await ctx.http.get(
-        _url("/v1/automations/internal/active"),
+        _url("/v1/automations/internal/all"),
         params={"tenant_id": tenant_id},
         headers=_service_headers(),
         timeout=HTTP_TIMEOUT_SECONDS,
