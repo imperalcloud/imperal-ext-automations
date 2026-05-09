@@ -1,162 +1,269 @@
-"""Automations · CRUD handlers."""
+"""Automations · @chat.function handlers (federal v4.1+ contract).
+
+Every write/destructive carries `effects=`; every entity-targeting
+tool carries `id_projection=` for chain-step argument projection
+(federal v4.1.2). All HTTP work is delegated to api.py which uses
+ctx.http (federal-clean transport) — no raw httpx in this module.
+"""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import logging
 
-from app import chat, ActionResult, _get_http, _user_id, _tenant_id, _load_event_catalog, _get_valid_event_types
+from imperal_sdk.chat import ActionResult
 
+from app import chat
+from api import (
+    list_active_rules,
+    create_rule,
+    patch_rule,
+    delete_rule,
+    load_event_catalog_cached,
+)
+from constants import ACTION_DESC_TRUNCATE_LEN, PROMPT_TRUNCATE_LEN
+from models import CreateAutomationParams, ListAutomationsParams, RuleIdParams
 
-# ─── Models ───────────────────────────────────────────────────────────── #
-
-class CreateAutomationParams(BaseModel):
-    """Create a new automation rule."""
-    event_type: str         = Field(description="Trigger event (e.g. email.received, notes.created)")
-    action_description: str = Field(description="What to do when triggered, in natural language")
-    schedule: str           = Field(default="", description="Cron expression (system.scheduled only)")
-    cooldown_seconds: int   = Field(default=60, description="Min seconds between triggers")
-    max_per_hour: int       = Field(default=10, description="Max triggers per hour")
-
-
-class RuleIdParams(BaseModel):
-    """Target a specific rule."""
-    rule_id: int = Field(description="The rule ID")
+log = logging.getLogger("automations")
 
 
-# ─── Handlers ─────────────────────────────────────────────────────────── #
+# ─── ctx accessors (kernel guarantees ctx.user) ───────────────────────── #
 
-@chat.function("list_automations", action_type="read",
-               description="List all your automation rules with status and execution stats.")
-async def fn_list_automations(ctx) -> ActionResult:
-    user_id = _user_id(ctx)
-    await _load_event_catalog()
+def _user_id(ctx) -> str:
+    return ctx.user.imperal_id
+
+
+def _tenant_id(ctx) -> str:
+    return getattr(ctx.user, "tenant_id", "default")
+
+
+def _is_admin(ctx) -> bool:
+    return getattr(ctx.user, "role", "") == "admin"
+
+
+def _rule_summary(r: dict) -> dict:
+    return {
+        "rule_id":          r["id"],
+        "prompt":           r.get("prompt", ""),
+        "status":           r.get("status", "unknown"),
+        "trigger_count":    r.get("trigger_count", 0),
+        "success_count":    r.get("success_count", 0),
+        "fail_count":       r.get("fail_count", 0),
+        "last_error":       r.get("last_error"),
+        "cooldown_seconds": r.get("cooldown_seconds", 0),
+        "max_per_hour":     r.get("max_per_hour", 0),
+        "created_at":       r.get("created_at", ""),
+        "user_id":          r.get("user_id", ""),
+    }
+
+
+# ─── Read ─────────────────────────────────────────────────────────────── #
+
+@chat.function(
+    "list_automations",
+    action_type="read",
+    description="List all your automation rules with status and execution stats.",
+)
+async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResult:
+    """List automation rules. Optional `status` filter narrows by state."""
     try:
-        r = await _get_http().get("/v1/automations/internal/active", params={"tenant_id": _tenant_id(ctx)})
-        if r.status_code != 200:
-            return ActionResult.error(f"Failed to fetch rules: HTTP {r.status_code}")
-        all_rules = r.json()
-        is_admin = hasattr(ctx, "user") and ctx.user and ctx.user.role == "admin"
-        if is_admin:
-            rules_data = all_rules
-            for rule in rules_data:
-                if rule.get("user_id") != user_id:
-                    rule["_owner"] = rule.get("user_id", "unknown")
-            summary = f"System has {len(rules_data)} automation rule(s) (admin view)"
-        else:
-            rules_data = [rule for rule in all_rules if rule.get("user_id") == user_id]
-            summary = f"You have {len(rules_data)} automation rule(s)"
-        return ActionResult.success(
-            data={
-                "rules": [
-                    {
-                        "rule_id":          rule["id"],
-                        "prompt":           rule.get("prompt", ""),
-                        "status":           rule.get("status", "unknown"),
-                        "trigger_count":    rule.get("trigger_count", 0),
-                        "success_count":    rule.get("success_count", 0),
-                        "fail_count":       rule.get("fail_count", 0),
-                        "last_error":       rule.get("last_error"),
-                        "cooldown_seconds": rule.get("cooldown_seconds", 0),
-                        "max_per_hour":     rule.get("max_per_hour", 0),
-                        "created_at":       rule.get("created_at", ""),
-                        "user_id":          rule.get("user_id", ""),
-                    }
-                    for rule in rules_data
-                ],
-                "total": len(rules_data),
-                "admin_view": is_admin,
-            },
-            summary=summary,
-        )
-    except Exception as e:
-        return ActionResult.error(f"Failed to list automations: {e}")
+        all_rules = await list_active_rules(ctx, tenant_id=_tenant_id(ctx))
+    except Exception as exc:
+        log.warning("list_automations: fetch failed: %s", exc, exc_info=True)
+        return ActionResult.error("Failed to fetch automation rules.")
+
+    user_id = _user_id(ctx)
+    if _is_admin(ctx):
+        rules = all_rules
+        for r in rules:
+            if r.get("user_id") != user_id:
+                r["_owner"] = r.get("user_id", "unknown")
+        scope_note = " (admin view)"
+    else:
+        rules = [r for r in all_rules if r.get("user_id") == user_id]
+        scope_note = ""
+
+    if params.status:
+        rules = [r for r in rules if r.get("status") == params.status]
+
+    summary = (
+        f"You have {len(rules)} {params.status or 'automation'} rule(s){scope_note}"
+        if not _is_admin(ctx)
+        else f"System has {len(rules)} {params.status or 'automation'} rule(s){scope_note}"
+    )
+
+    return ActionResult.success(
+        data={
+            "rules":      [_rule_summary(r) for r in rules],
+            "total":      len(rules),
+            "admin_view": _is_admin(ctx),
+            "filter":     {"status": params.status},
+        },
+        summary=summary,
+    )
 
 
-@chat.function("create_automation", action_type="write", event="rule_created",
-               description="Create a new automation rule from AVAILABLE TRIGGER EVENTS.")
+@chat.function(
+    "get_automation_details",
+    action_type="read",
+    description="Get detailed information about a specific automation rule.",
+    id_projection="rule_id",
+)
+async def fn_get_automation_details(ctx, params: RuleIdParams) -> ActionResult:
+    """Fetch full details of one rule (must belong to caller)."""
+    try:
+        rules = await list_active_rules(ctx, tenant_id=_tenant_id(ctx))
+    except Exception as exc:
+        log.warning("get_automation_details: fetch failed: %s", exc, exc_info=True)
+        return ActionResult.error("Failed to fetch automation rule.")
+
+    user_id = _user_id(ctx)
+    for r in rules:
+        if r.get("id") == params.rule_id and r.get("user_id") == user_id:
+            return ActionResult.success(
+                data={"rule": r},
+                summary=f"Rule #{params.rule_id}: {(r.get('prompt') or '')[:PROMPT_TRUNCATE_LEN]}",
+            )
+    return ActionResult.error(f"Rule #{params.rule_id} not found or not yours")
+
+
+# ─── Write ────────────────────────────────────────────────────────────── #
+
+@chat.function(
+    "create_automation",
+    action_type="write",
+    event="rule_created",
+    chain_callable=True,
+    effects=["create:automation"],
+    description="Create a new automation rule from rules.available_events skeleton.",
+)
 async def fn_create_automation(ctx, params: CreateAutomationParams) -> ActionResult:
+    """Create a new automation rule keyed to a platform event."""
     if not params.event_type:
         return ActionResult.error("event_type is required.", retryable=True)
     if not params.action_description:
         return ActionResult.error("action_description is required.", retryable=True)
-    catalog = await _load_event_catalog()
-    valid = _get_valid_event_types(catalog)
+
+    catalog = await load_event_catalog_cached(ctx)
+    valid = catalog.valid_event_types
     if valid and params.event_type not in valid:
-        return ActionResult.error(f"Event '{params.event_type}' not found. Available: {', '.join(sorted(valid))}", retryable=True)
+        return ActionResult.error(
+            f"Event '{params.event_type}' not found. Available: {', '.join(sorted(valid))}",
+            retryable=True,
+        )
+
     if params.event_type == "system.scheduled":
         if not params.schedule:
-            return ActionResult.error("schedule (cron) is required for system.scheduled.", retryable=True)
+            return ActionResult.error(
+                "schedule (cron) is required for system.scheduled.",
+                retryable=True,
+            )
         try:
             from croniter import croniter
             croniter(params.schedule)
-        except (ValueError, KeyError) as e:
-            return ActionResult.error(f"Invalid cron '{params.schedule}': {e}")
+        except (ValueError, KeyError) as exc:
+            return ActionResult.error(f"Invalid cron '{params.schedule}': {exc}")
+
     body = {
-        "user_id": _user_id(ctx), "tenant_id": _tenant_id(ctx),
-        "prompt": f"When {params.event_type}: {params.action_description}",
-        "trigger_filter": {"event_type": params.event_type, **({"schedule": params.schedule} if params.schedule else {})},
-        "actions": [{"message": params.action_description}],
-        "interpretation": params.action_description[:200],
-        "cooldown_seconds": params.cooldown_seconds, "max_per_hour": params.max_per_hour,
+        "user_id":   _user_id(ctx),
+        "tenant_id": _tenant_id(ctx),
+        "prompt":    f"When {params.event_type}: {params.action_description}",
+        "trigger_filter": {
+            "event_type": params.event_type,
+            **({"schedule": params.schedule} if params.schedule else {}),
+        },
+        "actions":          [{"message": params.action_description}],
+        "interpretation":   params.action_description[:ACTION_DESC_TRUNCATE_LEN],
+        "cooldown_seconds": params.cooldown_seconds,
+        "max_per_hour":     params.max_per_hour,
     }
+
     try:
-        r = await _get_http().post("/v1/automations/internal/create", json=body)
-        if r.status_code in (200, 201):
-            rule = r.json()
-            return ActionResult.success(data={"rule_id": rule.get("id"), "rule": rule},
-                                        summary=f"Rule #{rule.get('id')} created: {params.action_description[:80]}")
-        return ActionResult.error(f"Failed to create: {r.status_code} {r.text}")
-    except Exception as e:
-        return ActionResult.error(f"Failed to create automation: {e}")
+        rule = await create_rule(ctx, body=body)
+    except Exception as exc:
+        log.warning("create_automation: HTTP failed: %s", exc, exc_info=True)
+        return ActionResult.error(f"Failed to create automation: {exc}")
+
+    if not rule:
+        return ActionResult.error("Failed to create automation rule.")
+
+    return ActionResult.success(
+        data={"rule_id": rule.get("id"), "rule": rule},
+        summary=f"Rule #{rule.get('id')} created: {params.action_description[:PROMPT_TRUNCATE_LEN]}",
+    )
 
 
-@chat.function("pause_automation", action_type="write", event="rule_paused",
-               description="Pause an active automation rule temporarily.")
+@chat.function(
+    "pause_automation",
+    action_type="write",
+    event="rule_paused",
+    chain_callable=True,
+    effects=["update:automation"],
+    id_projection="rule_id",
+    description="Pause an active automation rule temporarily.",
+)
 async def fn_pause_automation(ctx, params: RuleIdParams) -> ActionResult:
-    try:
-        r = await _get_http().patch(f"/v1/automations/internal/{params.rule_id}", json={"status": "paused"})
-        if r.status_code == 200:
-            return ActionResult.success(data={"rule_id": params.rule_id, "status": "paused"}, summary=f"Rule #{params.rule_id} paused")
-        return ActionResult.error(f"Failed to pause: HTTP {r.status_code}")
-    except Exception as e:
-        return ActionResult.error(f"Failed: {e}")
+    """Mark an active rule as paused. Trigger counts are preserved."""
+    return await _apply_status_patch(
+        ctx, params.rule_id, patch={"status": "paused"}, verb="paused",
+    )
 
 
-@chat.function("resume_automation", action_type="write", event="rule_resumed",
-               description="Resume a paused automation rule. Resets trigger count.")
+@chat.function(
+    "resume_automation",
+    action_type="write",
+    event="rule_resumed",
+    chain_callable=True,
+    effects=["update:automation"],
+    id_projection="rule_id",
+    description="Resume a paused automation rule. Resets trigger count.",
+)
 async def fn_resume_automation(ctx, params: RuleIdParams) -> ActionResult:
+    """Reactivate a paused rule and reset its trigger counter."""
+    return await _apply_status_patch(
+        ctx, params.rule_id,
+        patch={"status": "active", "trigger_count": 0},
+        verb="resumed",
+        extra_data={"trigger_count_reset": True},
+    )
+
+
+async def _apply_status_patch(
+    ctx, rule_id: int, *,
+    patch: dict, verb: str, extra_data: dict | None = None,
+) -> ActionResult:
     try:
-        r = await _get_http().patch(f"/v1/automations/internal/{params.rule_id}", json={"status": "active", "trigger_count": 0})
-        if r.status_code == 200:
-            return ActionResult.success(data={"rule_id": params.rule_id, "status": "active", "trigger_count_reset": True},
-                                        summary=f"Rule #{params.rule_id} resumed")
-        return ActionResult.error(f"Failed to resume: HTTP {r.status_code}")
-    except Exception as e:
-        return ActionResult.error(f"Failed: {e}")
+        ok = await patch_rule(ctx, rule_id, patch)
+    except Exception as exc:
+        log.warning("patch rule %s failed: %s", rule_id, exc, exc_info=True)
+        return ActionResult.error(f"Failed to {verb} rule #{rule_id}: {exc}")
+    if not ok:
+        return ActionResult.error(f"Failed to {verb} rule #{rule_id}.")
+    data = {"rule_id": rule_id, "status": patch.get("status", "")}
+    if extra_data:
+        data.update(extra_data)
+    return ActionResult.success(data=data, summary=f"Rule #{rule_id} {verb}")
 
 
-@chat.function("delete_automation", action_type="destructive", event="rule_deleted",
-               description="Permanently delete an automation rule.")
+# ─── Destructive ──────────────────────────────────────────────────────── #
+
+@chat.function(
+    "delete_automation",
+    action_type="destructive",
+    event="rule_deleted",
+    chain_callable=True,
+    effects=["delete:automation"],
+    id_projection="rule_id",
+    description="Permanently delete an automation rule.",
+)
 async def fn_delete_automation(ctx, params: RuleIdParams) -> ActionResult:
+    """Permanently delete a rule. Cannot be undone."""
     try:
-        r = await _get_http().delete(f"/v1/automations/internal/{params.rule_id}")
-        if r.status_code in (200, 204):
-            return ActionResult.success(data={"rule_id": params.rule_id, "deleted": True}, summary=f"Rule #{params.rule_id} deleted")
-        return ActionResult.error(f"Failed to delete: HTTP {r.status_code}")
-    except Exception as e:
-        return ActionResult.error(f"Failed: {e}")
-
-
-@chat.function("get_automation_details", action_type="read",
-               description="Get detailed information about a specific automation rule.")
-async def fn_get_automation_details(ctx, params: RuleIdParams) -> ActionResult:
-    user_id = _user_id(ctx)
-    try:
-        r = await _get_http().get("/v1/automations/internal/active", params={"tenant_id": _tenant_id(ctx)})
-        if r.status_code != 200:
-            return ActionResult.error(f"Failed to fetch: HTTP {r.status_code}")
-        for rule in r.json():
-            if rule.get("id") == params.rule_id and rule.get("user_id") == user_id:
-                return ActionResult.success(data={"rule": rule}, summary=f"Rule #{params.rule_id}: {rule.get('prompt', '')[:80]}")
-        return ActionResult.error(f"Rule #{params.rule_id} not found or not yours")
-    except Exception as e:
-        return ActionResult.error(f"Failed: {e}")
+        ok = await delete_rule(ctx, params.rule_id)
+    except Exception as exc:
+        log.warning("delete_automation: HTTP failed: %s", exc, exc_info=True)
+        return ActionResult.error(f"Failed to delete rule #{params.rule_id}: {exc}")
+    if not ok:
+        return ActionResult.error(f"Failed to delete rule #{params.rule_id}.")
+    return ActionResult.success(
+        data={"rule_id": params.rule_id, "deleted": True},
+        summary=f"Rule #{params.rule_id} deleted",
+    )

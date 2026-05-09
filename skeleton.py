@@ -1,31 +1,70 @@
-"""Automations · Skeleton tools."""
+"""Automations · @ext.skeleton refresh tool (canonical v1.6.0+ contract).
+
+Returns rule stats AND the platform event catalog as `available_events`.
+LLM consumes both via per-turn skeleton context — that closes the
+'inject catalog into system prompt' need without monkey-patching SDK
+internals.
+"""
 from __future__ import annotations
 
-from app import ext, _get_http, _user_id, _tenant_id, _load_event_catalog
+import logging
+
+from app import ext
+from api import list_active_rules, load_event_catalog_cached
+from constants import (
+    SKELETON_RULE_LIMIT,
+    PROMPT_TRUNCATE_LEN,
+    EVENT_DESC_TRUNCATE_LEN,
+)
+from models import EventCatalog
+
+log = logging.getLogger("automations")
 
 
-# ─── Skeleton ─────────────────────────────────────────────────────────── #
+@ext.skeleton(
+    "rules",
+    alert=False,
+    ttl=300,
+    description="User's automation rule stats + platform event catalog (read by LLM each turn).",
+)
+async def skeleton_refresh_rules(ctx) -> dict:
+    user_id   = ctx.user.imperal_id
+    tenant_id = getattr(ctx.user, "tenant_id", "default")
 
-@ext.tool("skeleton_automations_stats")
-async def skeleton_stats(ctx, **kwargs) -> dict:
-    """Background refresh: count user's active rules for skeleton context."""
-    user_id = _user_id(ctx)
-    await _load_event_catalog()
+    rules: list[dict] = []
     try:
-        r = await _get_http().get("/v1/automations/internal/active", params={"tenant_id": _tenant_id(ctx)})
-        if r.status_code == 200:
-            my = [rule for rule in r.json() if rule.get("user_id") == user_id]
-            response = {
-                "total": len(my),
-                "active": sum(1 for r in my if r.get("status") == "active"),
-                "paused": sum(1 for r in my if r.get("status") == "paused"),
-                "errored": sum(1 for r in my if r.get("status") == "error"),
-                "rules_summary": [
-                    {"rule_id": r["id"], "prompt": r.get("prompt", "")[:80], "status": r.get("status")}
-                    for r in my[:5]
-                ],
-            }
-            return {"response": response}
-    except Exception:
-        pass
-    return {"response": {"total": 0, "active": 0, "paused": 0, "errored": 0, "rules_summary": []}}
+        all_rules = await list_active_rules(ctx, tenant_id=tenant_id)
+        rules = [r for r in all_rules if r.get("user_id") == user_id]
+    except Exception as exc:
+        log.warning("skeleton: rule fetch failed: %s", exc, exc_info=True)
+
+    catalog: EventCatalog
+    try:
+        catalog = await load_event_catalog_cached(ctx)
+    except Exception as exc:
+        log.warning("skeleton: catalog fetch failed: %s", exc, exc_info=True)
+        catalog = EventCatalog()
+
+    return {
+        "response": {
+            "total":   len(rules),
+            "active":  sum(1 for r in rules if r.get("status") == "active"),
+            "paused":  sum(1 for r in rules if r.get("status") == "paused"),
+            "errored": sum(1 for r in rules if r.get("status") == "error"),
+            "rules_summary": [
+                {
+                    "rule_id": r["id"],
+                    "prompt":  (r.get("prompt") or "")[:PROMPT_TRUNCATE_LEN],
+                    "status":  r.get("status"),
+                }
+                for r in rules[:SKELETON_RULE_LIMIT]
+            ],
+            "available_events": [
+                {
+                    "event_type":  e.event_type,
+                    "description": e.description[:EVENT_DESC_TRUNCATE_LEN],
+                }
+                for e in catalog.entries
+            ],
+        }
+    }
