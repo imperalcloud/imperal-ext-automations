@@ -34,9 +34,12 @@ log = logging.getLogger("automations")
 
 @ext.panel(
     "workshop",
-    slot="center",
+    slot="right",
     title="Automation Workshop",
     icon="Workflow",
+    default_width=480,
+    min_width=320,
+    max_width=720,
     refresh="on_event:rule_created,rule_paused,rule_resumed,rule_deleted",
 )
 async def automations_workshop(ctx, **kwargs):
