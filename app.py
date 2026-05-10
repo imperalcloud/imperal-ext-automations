@@ -22,7 +22,7 @@ SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.txt").read_text()
 
 ext = Extension(
     "automations",
-    version="1.4.4",
+    version="1.4.5",
     capabilities=[
         # Rule CRUD
         "automations:read", "automations:write", "automations:delete",
