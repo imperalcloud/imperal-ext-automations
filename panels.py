@@ -90,7 +90,13 @@ async def automations_sidebar(ctx, **kwargs):
         children.append(ui.Divider(f"Rules ({total})"))
         children.append(ui.List(items=items, searchable=True))
 
-    return ui.Stack(children=children, gap=2, className="min-h-full")
+    # Auto-trigger center overlay (Workshop) on first sidebar mount.
+    # Frontend usePanelDiscovery's isCenterOverlay allowlist routes
+    # __panel__workshop to setCenterOverlay → ExtensionPage shifts
+    # chat to a 380px right rail → Workshop fills the center.
+    root = ui.Stack(children=children, gap=2, className="min-h-full")
+    root.props["auto_action"] = ui.Call("__panel__workshop")
+    return root
 
 
 def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
