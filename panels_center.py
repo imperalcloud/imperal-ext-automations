@@ -1,14 +1,14 @@
-"""Automations · 'Automation Workshop' right-side panel.
+"""Automations · 'Automation Workshop' center panel.
 
 Split out of panels.py to keep each file under the 300-LOC ceiling
 (workspace rule 6). The compact rule-list sidebar (slot=left) lives
-in panels.py; this is the rich editor + dashboard surface (slot=right).
+in panels.py; this is the rich editor + dashboard surface (slot=center).
 
-Why slot=right and not slot=center: the Imperal Panel frontend does
-not currently render slot=center for arbitrary extensions — its
-center-overlay routing is hardcoded for `editor`/`compose`/`email_viewer`
-panel_ids in notes/mail. See concepts/panels.mdx § slot rendering
-status. Right slot is fully rendered today.
+Pattern matches whiteboard/canvas, wp-blogger/editor, sql-db/editor:
+descriptive panel_id + slot=center renders as always-on center
+content. The center-OVERLAY (modal-style, dismissible) is a separate
+hardcoded-allowlist path for editor+note_id, compose, email_viewer
+panel_ids — irrelevant here.
 """
 from __future__ import annotations
 
@@ -34,12 +34,9 @@ log = logging.getLogger("automations")
 
 @ext.panel(
     "workshop",
-    slot="right",
+    slot="center",
     title="Automation Workshop",
     icon="Workflow",
-    default_width=480,
-    min_width=320,
-    max_width=720,
     refresh="on_event:rule_created,rule_paused,rule_resumed,rule_deleted",
 )
 async def automations_workshop(ctx, **kwargs):
