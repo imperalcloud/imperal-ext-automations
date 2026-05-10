@@ -37,6 +37,7 @@ log = logging.getLogger("automations")
     slot="center",
     title="Automation Workshop",
     icon="Workflow",
+    center_overlay=True,  # federal v4.1.8 — declarative; replaces hardcoded TS allowlist
     refresh="on_event:rule_created,rule_paused,rule_resumed,rule_deleted",
 )
 async def automations_workshop(ctx, **kwargs):
