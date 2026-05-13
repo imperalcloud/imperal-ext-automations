@@ -1,12 +1,13 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "4.1.8",
+  "sdk_version": "4.2.10",
   "app_id": "automations",
-  "version": "1.4.9",
+  "version": "1.4.10",
   "name": "AI Cloud Agents",
   "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
   "icon": "icon.svg",
   "actions_explicit": true,
+  "system": false,
   "capabilities": [
     "automations:read",
     "automations:write",
@@ -45,7 +46,7 @@
       "name": "list_automations",
       "description": "List all your automation rules with status and execution stats.",
       "action_type": "read",
-      "chain_callable": false,
+      "chain_callable": true,
       "effects": [],
       "id_projection": "",
       "params_schema": {
@@ -77,7 +78,7 @@
       "name": "get_automation_details",
       "description": "Get detailed information about a specific automation rule.",
       "action_type": "read",
-      "chain_callable": false,
+      "chain_callable": true,
       "effects": [],
       "id_projection": "rule_id",
       "params_schema": {
@@ -244,7 +245,7 @@
   "signals": [],
   "schedules": [],
   "required_scopes": [],
-  "icon_size_bytes": 1011,
+  "icon_size_bytes": 381,
   "events": {
     "subscribes": [
       {
