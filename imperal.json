@@ -1,8 +1,8 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "4.2.10",
+  "sdk_version": "5.0.0",
   "app_id": "automations",
-  "version": "1.4.10",
+  "version": "1.5.0",
   "name": "AI Cloud Agents",
   "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
   "icon": "icon.svg",
@@ -21,21 +21,6 @@
     "automations:*"
   ],
   "tools": [
-    {
-      "name": "tool_automations_chat",
-      "description": "AI Cloud Agents manager — create, list, pause, resume, delete automation rules. Automations trigger on events (email received, note created, schedule) and execute actions.",
-      "scopes": [],
-      "parameters": {
-        "message": {
-          "type": "string",
-          "required": false
-        },
-        "kwargs": {
-          "type": "string",
-          "required": true
-        }
-      }
-    },
     {
       "name": "skeleton_refresh_rules",
       "description": "User's automation rule stats + platform event catalog (read by LLM each turn).",
@@ -71,6 +56,8 @@
       },
       "return_schema": {},
       "event": "",
+      "background": false,
+      "long_running": false,
       "scopes": [],
       "owner_chat_tool": "tool_automations_chat"
     },
@@ -98,6 +85,8 @@
       },
       "return_schema": {},
       "event": "",
+      "background": false,
+      "long_running": false,
       "scopes": [],
       "owner_chat_tool": "tool_automations_chat"
     },
@@ -151,6 +140,8 @@
       },
       "return_schema": {},
       "event": "rule_created",
+      "background": false,
+      "long_running": false,
       "scopes": [],
       "owner_chat_tool": "tool_automations_chat"
     },
@@ -180,6 +171,8 @@
       },
       "return_schema": {},
       "event": "rule_paused",
+      "background": false,
+      "long_running": false,
       "scopes": [],
       "owner_chat_tool": "tool_automations_chat"
     },
@@ -209,6 +202,8 @@
       },
       "return_schema": {},
       "event": "rule_resumed",
+      "background": false,
+      "long_running": false,
       "scopes": [],
       "owner_chat_tool": "tool_automations_chat"
     },
@@ -238,6 +233,8 @@
       },
       "return_schema": {},
       "event": "rule_deleted",
+      "background": false,
+      "long_running": false,
       "scopes": [],
       "owner_chat_tool": "tool_automations_chat"
     }
