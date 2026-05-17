@@ -22,7 +22,7 @@ SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.txt").read_text()
 
 ext = Extension(
     "automations",
-    version="1.5.0",
+    version="1.5.1",
     capabilities=[
         # Rule CRUD
         "automations:read", "automations:write", "automations:delete",
@@ -47,8 +47,8 @@ ext = Extension(
 )
 
 chat = ChatExtension(
-    ext=ext,
-    tool_name="tool_automations_chat",  # locked — production routing depends on this name
+    ext,
+    "tool_automations_chat",  # locked — production routing depends on this name
     description=(
         "AI Cloud Agents manager — create, list, pause, resume, delete automation rules. "
         "Automations trigger on events (email received, note created, schedule) and execute actions."
