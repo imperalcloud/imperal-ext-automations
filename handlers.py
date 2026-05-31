@@ -21,7 +21,12 @@ from api import (
     fetch_user_role_cached,
 )
 from constants import ACTION_DESC_TRUNCATE_LEN, PROMPT_TRUNCATE_LEN
-from models import CreateAutomationParams, ListAutomationsParams, RuleIdParams
+from models import (
+    AutomationRule,
+    CreateAutomationParams,
+    ListAutomationsParams,
+    RuleIdParams,
+)
 
 log = logging.getLogger("automations")
 
@@ -69,6 +74,7 @@ def _rule_summary(r: dict) -> dict:
     "list_automations",
     action_type="read",
     description="List all your automation rules with status and execution stats.",
+    data_model=AutomationRule,
 )
 async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResult:
     """List automation rules. Optional `status` filter narrows by state."""
