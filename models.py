@@ -5,6 +5,8 @@ EventCatalog used by ctx.cache.
 """
 from __future__ import annotations
 
+from typing import Any, Optional
+
 from pydantic import BaseModel, Field, model_validator
 
 from imperal_sdk import sdl
@@ -96,13 +98,75 @@ class AutomationRule(sdl.Entity, sdl.Prioritized, sdl.WorkflowState):
     @classmethod
     def _sdl_canon(cls, data):
         if isinstance(data, dict):
+            # Two producing shapes feed this entity:
+            #   * list_automations -> _rule_summary(r) keyed on ``rule_id``
+            #   * get_automation_details -> the RAW gateway rule dict keyed on ``id``
+            # Resolve the canonical SDL id from whichever is present, and mirror it
+            # back into ``rule_id`` so the panels/list-item builders (which read
+            # ``rule_id``) keep working on a details-shaped entity too.
             rid = data.get("rule_id")
-            data.setdefault("id", rid if rid is not None else "")
+            if rid is None:
+                rid = data.get("id")
+            data["id"] = rid if rid is not None else ""
+            if data.get("rule_id") is None and rid is not None:
+                data["rule_id"] = rid
             data.setdefault("title", data.get("prompt") or (str(rid) if rid is not None else ""))
             # status is an existing field that maps to core.status verbatim.
             # Mirror the lifecycle status into the WorkflowState.state role too.
             if data.get("status"):
                 data.setdefault("state", data["status"])
+        return data
+
+
+class AutomationListResponse(sdl.EntityList[AutomationRule]):
+    """``list_automations`` return shape — a REAL ``sdl.EntityList[AutomationRule]``
+    (``items=[...]``, ``x-sdl="entity-list"``). The legacy ``{rules:[dict], ...}``
+    wrapper is GONE; the handler now returns
+    ``data={"items":[...], "total": n, "admin_view": bool, "filter": {...}}``.
+
+    ``admin_view`` and ``filter`` are kept as additive typed fields on the
+    EntityList so the existing scalars survive verbatim for the narrator.
+    """
+    admin_view: bool = False
+    filter: dict = Field(default_factory=dict)
+
+
+class AutomationActionReceipt(sdl.Entity):
+    """Receipt entity for the write/destructive rule verbs that return a small
+    payload keyed by ``rule_id`` (create / pause / resume / delete) — kind='rule'.
+
+    Field names mirror the ACTUAL handler return-dict keys verbatim
+    (I-EXT-RECORD-FIELD-NAMING-SYMMETRIC):
+      * create_automation -> {"rule_id", "rule"}
+      * pause_automation  -> {"rule_id", "status"}
+      * resume_automation -> {"rule_id", "status", "trigger_count_reset"}
+      * delete_automation -> {"rule_id", "deleted"}
+    One field-symmetric receipt covers all four (reuse, do not invent per-verb
+    receipts). The canonical id is the rule_id; the title is drawn from the
+    embedded rule's prompt/name where present (create echoes the full rule).
+    """
+    rule_id: Optional[Any] = None
+    rule: Optional[Any] = None
+    status: Optional[str] = None
+    deleted: Optional[bool] = None
+    trigger_count_reset: Optional[bool] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sdl_canon(cls, data):
+        if isinstance(data, dict):
+            _rule = data.get("rule")
+            inner = _rule if isinstance(_rule, dict) else {}
+            rid = data.get("rule_id")
+            if rid is None:
+                rid = inner.get("id")
+            data["id"] = rid if rid is not None else ""
+            data.setdefault(
+                "title",
+                inner.get("prompt") or inner.get("name")
+                or (str(rid) if rid is not None else ""),
+            )
+            data.setdefault("kind", "rule")
         return data
 
 

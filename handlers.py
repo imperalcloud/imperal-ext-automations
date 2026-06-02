@@ -23,6 +23,8 @@ from api import (
 from constants import ACTION_DESC_TRUNCATE_LEN, PROMPT_TRUNCATE_LEN
 from models import (
     AutomationRule,
+    AutomationListResponse,
+    AutomationActionReceipt,
     CreateAutomationParams,
     ListAutomationsParams,
     RuleIdParams,
@@ -74,7 +76,7 @@ def _rule_summary(r: dict) -> dict:
     "list_automations",
     action_type="read",
     description="List all your automation rules with status and execution stats.",
-    data_model=AutomationRule,
+    data_model=AutomationListResponse,
 )
 async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResult:
     """List automation rules. Optional `status` filter narrows by state."""
@@ -105,9 +107,14 @@ async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResul
         else f"You have {len(rules)} {params.status or 'automation'} rule(s){scope_note}"
     )
 
+    # SDL entity-list (NO legacy {"rules": [...]} wrapper): each rule is a
+    # canonical AutomationRule entity (id=rule_id, title=prompt, kind via the
+    # subclass-name default; _sdl_canon fills the core fields). The kernel reads
+    # data["items"] + title to resolve a rule SET and fan out by id. Data conforms
+    # to the sdl.EntityList[AutomationRule] contract (x-sdl="entity-list").
     return ActionResult.success(
         data={
-            "rules":      [_rule_summary(r) for r in rules],
+            "items":      [_rule_summary(r) for r in rules],
             "total":      len(rules),
             "admin_view": is_admin,
             "filter":     {"status": params.status},
@@ -121,6 +128,7 @@ async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResul
     action_type="read",
     description="Get detailed information about a specific automation rule.",
     id_projection="rule_id",
+    data_model=AutomationRule,
 )
 async def fn_get_automation_details(ctx, params: RuleIdParams) -> ActionResult:
     """Fetch full details of one rule (must belong to caller)."""
@@ -133,8 +141,12 @@ async def fn_get_automation_details(ctx, params: RuleIdParams) -> ActionResult:
     user_id = _user_id(ctx)
     for r in rules:
         if r.get("id") == params.rule_id and r.get("user_id") == user_id:
+            # SDL: return the raw gateway rule dict AS the AutomationRule entity
+            # (NO legacy {"rule": ...} wrapper). _sdl_canon resolves the canonical
+            # id from the raw "id" key and mirrors it into rule_id; the panels read
+            # the gateway response directly, not this chat output.
             return ActionResult.success(
-                data={"rule": r},
+                data=r,
                 summary=f"Rule #{params.rule_id}: {(r.get('prompt') or '')[:PROMPT_TRUNCATE_LEN]}",
             )
     return ActionResult.error(f"Rule #{params.rule_id} not found or not yours")
@@ -149,6 +161,7 @@ async def fn_get_automation_details(ctx, params: RuleIdParams) -> ActionResult:
     chain_callable=True,
     effects=["create:automation"],
     description="Create a new automation rule from rules.available_events skeleton.",
+    data_model=AutomationActionReceipt,
 )
 async def fn_create_automation(ctx, params: CreateAutomationParams) -> ActionResult:
     """Create a new automation rule keyed to a platform event."""
@@ -214,6 +227,7 @@ async def fn_create_automation(ctx, params: CreateAutomationParams) -> ActionRes
     effects=["update:automation"],
     id_projection="rule_id",
     description="Pause an active automation rule temporarily.",
+    data_model=AutomationActionReceipt,
 )
 async def fn_pause_automation(ctx, params: RuleIdParams) -> ActionResult:
     """Mark an active rule as paused. Trigger counts are preserved."""
@@ -230,6 +244,7 @@ async def fn_pause_automation(ctx, params: RuleIdParams) -> ActionResult:
     effects=["update:automation"],
     id_projection="rule_id",
     description="Resume a paused automation rule. Resets trigger count.",
+    data_model=AutomationActionReceipt,
 )
 async def fn_resume_automation(ctx, params: RuleIdParams) -> ActionResult:
     """Reactivate a paused rule and reset its trigger counter."""
@@ -268,6 +283,7 @@ async def _apply_status_patch(
     effects=["delete:automation"],
     id_projection="rule_id",
     description="Permanently delete an automation rule.",
+    data_model=AutomationActionReceipt,
 )
 async def fn_delete_automation(ctx, params: RuleIdParams) -> ActionResult:
     """Permanently delete a rule. Cannot be undone."""

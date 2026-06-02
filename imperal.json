@@ -1,8 +1,8 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "5.2.0",
+  "sdk_version": "5.2.1",
   "app_id": "automations",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "name": "AI Cloud Agents",
   "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
   "icon": "icon.svg",
@@ -54,7 +54,310 @@
         "title": "ListAutomationsParams",
         "type": "object"
       },
-      "return_schema": {},
+      "return_schema": {
+        "$defs": {
+          "AutomationRule": {
+            "description": "One automation rule, as projected by ``handlers._rule_summary``.\n\nADDITIVE SDL migration: every existing field is kept verbatim (same\nname AND same type) so the panels / sidebar / list-item builders that\nread ``rule_id`` / ``prompt`` / ``status`` / ``trigger_count`` etc.\nkeep working unchanged. The canonical SDL ``id`` / ``title`` / ``kind``\nare populated from the existing fields via a ``mode=\"before\"``\nvalidator, so existing\n``ActionResult.success(data={\"rules\": [_rule_summary(r), ...]})`` calls\nconstruct this model without any caller-side changes.\n\nField → role map:\n  id              <- rule_id   (core.id)\n  title           <- prompt    (core.title)\n  status          <- status    (core.status; active/paused/error)\nThe trigger/throttle counters, timestamps and owner are kept as their\nEXISTING string/int shapes and carry custom ``automations.*`` roles —\nthey are NOT remapped onto facets whose field types differ (e.g. the\nstandard ``time.created_at`` is a ``datetime`` and ``people.owner`` is a\n``Ref``, which would reject the existing ISO-string / id-string values).\n``sdl.WorkflowState.state`` mirrors the lifecycle state for state-machine\naware platform consumers; ``sdl.Prioritized`` is mixed in (all-optional)\nfor forward-compat with rule urgency. No existing field is renamed.",
+            "properties": {
+              "state": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "State",
+                "x-sdl-role": "task.state"
+              },
+              "allowed_transitions": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Allowed Transitions",
+                "x-sdl-role": "task.allowed_transitions"
+              },
+              "entered_state_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Entered State At",
+                "x-sdl-role": "task.entered_state_at"
+              },
+              "priority": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "urgent"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Priority",
+                "x-sdl-role": "task.priority"
+              },
+              "urgency": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Urgency",
+                "x-sdl-role": "task.urgency"
+              },
+              "severity": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "info",
+                      "minor",
+                      "major",
+                      "critical"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Severity",
+                "x-sdl-role": "task.severity"
+              },
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "title": "Id"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Status"
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Url"
+              },
+              "rule_id": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Rule Id"
+              },
+              "prompt": {
+                "default": "",
+                "title": "Prompt",
+                "type": "string"
+              },
+              "trigger_count": {
+                "default": 0,
+                "title": "Trigger Count",
+                "type": "integer",
+                "x-sdl-role": "automations.trigger_count"
+              },
+              "success_count": {
+                "default": 0,
+                "title": "Success Count",
+                "type": "integer",
+                "x-sdl-role": "automations.success_count"
+              },
+              "fail_count": {
+                "default": 0,
+                "title": "Fail Count",
+                "type": "integer",
+                "x-sdl-role": "automations.fail_count"
+              },
+              "last_error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Last Error"
+              },
+              "cooldown_seconds": {
+                "default": 0,
+                "title": "Cooldown Seconds",
+                "type": "integer",
+                "x-sdl-role": "automations.cooldown_seconds"
+              },
+              "max_per_hour": {
+                "default": 0,
+                "title": "Max Per Hour",
+                "type": "integer",
+                "x-sdl-role": "automations.max_per_hour"
+              },
+              "created_at": {
+                "default": "",
+                "title": "Created At",
+                "type": "string",
+                "x-sdl-role": "automations.created_at"
+              },
+              "user_id": {
+                "default": "",
+                "title": "User Id",
+                "type": "string",
+                "x-sdl-role": "automations.user_id"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "title": "AutomationRule",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "description": "``list_automations`` return shape — a REAL ``sdl.EntityList[AutomationRule]``\n(``items=[...]``, ``x-sdl=\"entity-list\"``). The legacy ``{rules:[dict], ...}``\nwrapper is GONE; the handler now returns\n``data={\"items\":[...], \"total\": n, \"admin_view\": bool, \"filter\": {...}}``.\n\n``admin_view`` and ``filter`` are kept as additive typed fields on the\nEntityList so the existing scalars survive verbatim for the narrator.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/AutomationRule"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "admin_view": {
+            "default": false,
+            "title": "Admin View",
+            "type": "boolean"
+          },
+          "filter": {
+            "additionalProperties": true,
+            "title": "Filter",
+            "type": "object"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AutomationListResponse",
+        "type": "object",
+        "x-sdl": "entity-list"
+      },
       "event": "",
       "background": false,
       "long_running": false,
@@ -83,7 +386,251 @@
         "title": "RuleIdParams",
         "type": "object"
       },
-      "return_schema": {},
+      "return_schema": {
+        "description": "One automation rule, as projected by ``handlers._rule_summary``.\n\nADDITIVE SDL migration: every existing field is kept verbatim (same\nname AND same type) so the panels / sidebar / list-item builders that\nread ``rule_id`` / ``prompt`` / ``status`` / ``trigger_count`` etc.\nkeep working unchanged. The canonical SDL ``id`` / ``title`` / ``kind``\nare populated from the existing fields via a ``mode=\"before\"``\nvalidator, so existing\n``ActionResult.success(data={\"rules\": [_rule_summary(r), ...]})`` calls\nconstruct this model without any caller-side changes.\n\nField → role map:\n  id              <- rule_id   (core.id)\n  title           <- prompt    (core.title)\n  status          <- status    (core.status; active/paused/error)\nThe trigger/throttle counters, timestamps and owner are kept as their\nEXISTING string/int shapes and carry custom ``automations.*`` roles —\nthey are NOT remapped onto facets whose field types differ (e.g. the\nstandard ``time.created_at`` is a ``datetime`` and ``people.owner`` is a\n``Ref``, which would reject the existing ISO-string / id-string values).\n``sdl.WorkflowState.state`` mirrors the lifecycle state for state-machine\naware platform consumers; ``sdl.Prioritized`` is mixed in (all-optional)\nfor forward-compat with rule urgency. No existing field is renamed.",
+        "properties": {
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "State",
+            "x-sdl-role": "task.state"
+          },
+          "allowed_transitions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Allowed Transitions",
+            "x-sdl-role": "task.allowed_transitions"
+          },
+          "entered_state_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entered State At",
+            "x-sdl-role": "task.entered_state_at"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "urgent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Priority",
+            "x-sdl-role": "task.priority"
+          },
+          "urgency": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Urgency",
+            "x-sdl-role": "task.urgency"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "info",
+                  "minor",
+                  "major",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Severity",
+            "x-sdl-role": "task.severity"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "trigger_count": {
+            "default": 0,
+            "title": "Trigger Count",
+            "type": "integer",
+            "x-sdl-role": "automations.trigger_count"
+          },
+          "success_count": {
+            "default": 0,
+            "title": "Success Count",
+            "type": "integer",
+            "x-sdl-role": "automations.success_count"
+          },
+          "fail_count": {
+            "default": 0,
+            "title": "Fail Count",
+            "type": "integer",
+            "x-sdl-role": "automations.fail_count"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Error"
+          },
+          "cooldown_seconds": {
+            "default": 0,
+            "title": "Cooldown Seconds",
+            "type": "integer",
+            "x-sdl-role": "automations.cooldown_seconds"
+          },
+          "max_per_hour": {
+            "default": 0,
+            "title": "Max Per Hour",
+            "type": "integer",
+            "x-sdl-role": "automations.max_per_hour"
+          },
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string",
+            "x-sdl-role": "automations.created_at"
+          },
+          "user_id": {
+            "default": "",
+            "title": "User Id",
+            "type": "string",
+            "x-sdl-role": "automations.user_id"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "AutomationRule",
+        "type": "object",
+        "x-sdl": "entity"
+      },
       "event": "",
       "background": false,
       "long_running": false,
@@ -138,7 +685,130 @@
         "title": "CreateAutomationParams",
         "type": "object"
       },
-      "return_schema": {},
+      "return_schema": {
+        "description": "Receipt entity for the write/destructive rule verbs that return a small\npayload keyed by ``rule_id`` (create / pause / resume / delete) — kind='rule'.\n\nField names mirror the ACTUAL handler return-dict keys verbatim\n(I-EXT-RECORD-FIELD-NAMING-SYMMETRIC):\n  * create_automation -> {\"rule_id\", \"rule\"}\n  * pause_automation  -> {\"rule_id\", \"status\"}\n  * resume_automation -> {\"rule_id\", \"status\", \"trigger_count_reset\"}\n  * delete_automation -> {\"rule_id\", \"deleted\"}\nOne field-symmetric receipt covers all four (reuse, do not invent per-verb\nreceipts). The canonical id is the rule_id; the title is drawn from the\nembedded rule's prompt/name where present (create echoes the full rule).",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "rule_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "rule": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule"
+          },
+          "deleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Deleted"
+          },
+          "trigger_count_reset": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trigger Count Reset"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "AutomationActionReceipt",
+        "type": "object",
+        "x-sdl": "entity"
+      },
       "event": "rule_created",
       "background": false,
       "long_running": false,
@@ -169,7 +839,130 @@
         "title": "RuleIdParams",
         "type": "object"
       },
-      "return_schema": {},
+      "return_schema": {
+        "description": "Receipt entity for the write/destructive rule verbs that return a small\npayload keyed by ``rule_id`` (create / pause / resume / delete) — kind='rule'.\n\nField names mirror the ACTUAL handler return-dict keys verbatim\n(I-EXT-RECORD-FIELD-NAMING-SYMMETRIC):\n  * create_automation -> {\"rule_id\", \"rule\"}\n  * pause_automation  -> {\"rule_id\", \"status\"}\n  * resume_automation -> {\"rule_id\", \"status\", \"trigger_count_reset\"}\n  * delete_automation -> {\"rule_id\", \"deleted\"}\nOne field-symmetric receipt covers all four (reuse, do not invent per-verb\nreceipts). The canonical id is the rule_id; the title is drawn from the\nembedded rule's prompt/name where present (create echoes the full rule).",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "rule_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "rule": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule"
+          },
+          "deleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Deleted"
+          },
+          "trigger_count_reset": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trigger Count Reset"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "AutomationActionReceipt",
+        "type": "object",
+        "x-sdl": "entity"
+      },
       "event": "rule_paused",
       "background": false,
       "long_running": false,
@@ -200,7 +993,130 @@
         "title": "RuleIdParams",
         "type": "object"
       },
-      "return_schema": {},
+      "return_schema": {
+        "description": "Receipt entity for the write/destructive rule verbs that return a small\npayload keyed by ``rule_id`` (create / pause / resume / delete) — kind='rule'.\n\nField names mirror the ACTUAL handler return-dict keys verbatim\n(I-EXT-RECORD-FIELD-NAMING-SYMMETRIC):\n  * create_automation -> {\"rule_id\", \"rule\"}\n  * pause_automation  -> {\"rule_id\", \"status\"}\n  * resume_automation -> {\"rule_id\", \"status\", \"trigger_count_reset\"}\n  * delete_automation -> {\"rule_id\", \"deleted\"}\nOne field-symmetric receipt covers all four (reuse, do not invent per-verb\nreceipts). The canonical id is the rule_id; the title is drawn from the\nembedded rule's prompt/name where present (create echoes the full rule).",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "rule_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "rule": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule"
+          },
+          "deleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Deleted"
+          },
+          "trigger_count_reset": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trigger Count Reset"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "AutomationActionReceipt",
+        "type": "object",
+        "x-sdl": "entity"
+      },
       "event": "rule_resumed",
       "background": false,
       "long_running": false,
@@ -231,7 +1147,130 @@
         "title": "RuleIdParams",
         "type": "object"
       },
-      "return_schema": {},
+      "return_schema": {
+        "description": "Receipt entity for the write/destructive rule verbs that return a small\npayload keyed by ``rule_id`` (create / pause / resume / delete) — kind='rule'.\n\nField names mirror the ACTUAL handler return-dict keys verbatim\n(I-EXT-RECORD-FIELD-NAMING-SYMMETRIC):\n  * create_automation -> {\"rule_id\", \"rule\"}\n  * pause_automation  -> {\"rule_id\", \"status\"}\n  * resume_automation -> {\"rule_id\", \"status\", \"trigger_count_reset\"}\n  * delete_automation -> {\"rule_id\", \"deleted\"}\nOne field-symmetric receipt covers all four (reuse, do not invent per-verb\nreceipts). The canonical id is the rule_id; the title is drawn from the\nembedded rule's prompt/name where present (create echoes the full rule).",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "rule_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "rule": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule"
+          },
+          "deleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Deleted"
+          },
+          "trigger_count_reset": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trigger Count Reset"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "AutomationActionReceipt",
+        "type": "object",
+        "x-sdl": "entity"
+      },
       "event": "rule_deleted",
       "background": false,
       "long_running": false,
