@@ -22,6 +22,19 @@ def test_manifest_create_has_no_max_per_hour():
     assert "max_per_hour" not in props
 
 
-def test_manifest_version_is_1_7_0():
+def test_manifest_version_matches_ext():
+    """Manifest version must equal the Extension version declared in app.py.
+
+    Version-agnostic on purpose: a bump no longer breaks this test, but a
+    forgotten `imperal build` (manifest drift) still does.
+    """
+    import re
     m = _manifest()
-    assert m["version"] == "1.7.0"
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(here, "app.py")) as f:
+        src = f.read()
+    mo = re.search(r'version\s*=\s*"([^"]+)"', src)
+    assert mo, "version=\"...\" not found in app.py"
+    assert m["version"] == mo.group(1), (
+        f'manifest version {m["version"]!r} != app.py {mo.group(1)!r} — run `imperal build`'
+    )
