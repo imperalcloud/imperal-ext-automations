@@ -13,7 +13,6 @@ from constants import (
     PROMPT_TRUNCATE_LEN,
     EVENT_DESC_TRUNCATE_LEN,
     DEFAULT_COOLDOWN_SECONDS,
-    DEFAULT_MAX_PER_HOUR,
 )
 
 log = logging.getLogger("automations")
@@ -150,7 +149,6 @@ def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
             ui.KeyValue([
                 {"key": "ID",        "value": str(rid)},
                 {"key": "Cooldown",  "value": f"{rule.get('cooldown_seconds', 60)}s"},
-                {"key": "Max/hour",  "value": str(rule.get('max_per_hour', 10))},
                 {"key": "Successes", "value": str(rule.get('success_count', 0))},
                 {"key": "Failures",  "value": str(rule.get('fail_count', 0))},
             ], columns=2),

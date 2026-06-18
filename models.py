@@ -11,10 +11,18 @@ from pydantic import BaseModel, Field, model_validator
 
 from imperal_sdk import sdl
 
-from constants import DEFAULT_COOLDOWN_SECONDS, DEFAULT_MAX_PER_HOUR
+from constants import DEFAULT_COOLDOWN_SECONDS
 
 
 # ─── @chat.function param models (V17) ────────────────────────────────── #
+
+class StructuredAction(BaseModel):
+    """WS2 grounded action — the resolved (app_id, tool, args) the rule runs.
+    Optional on create: when present the GW persists it instead of free text."""
+    app_id: str = Field(description="Extension that owns the tool, from the user's live scope")
+    tool: str = Field(description="@chat.function name the user can actually invoke")
+    args: dict = Field(default_factory=dict, description="Well-formed args for the tool")
+
 
 class CreateAutomationParams(BaseModel):
     """Create a new automation rule."""
@@ -35,9 +43,9 @@ class CreateAutomationParams(BaseModel):
         default=DEFAULT_COOLDOWN_SECONDS,
         description="Min seconds between triggers",
     )
-    max_per_hour: int = Field(
-        default=DEFAULT_MAX_PER_HOUR,
-        description="Max triggers per hour",
+    action: Optional[StructuredAction] = Field(
+        default=None,
+        description="Resolved (app_id, tool, args) for grounded persistence (WS2). Omit to keep NL action.",
     )
 
 
@@ -52,6 +60,16 @@ class ListAutomationsParams(BaseModel):
         default=None,
         description="Optional filter: 'active', 'paused', or 'error'. Omit for all.",
     )
+
+
+class UpdateAutomationParams(BaseModel):
+    """Edit an existing automation rule in place (preserves rule_id + stats)."""
+    rule_id: int = Field(description="The rule ID to edit")
+    action_description: str | None = Field(default=None, description="New plain-language action (re-grounded)")
+    event_type: str | None = Field(default=None, description="New trigger event (must exist in the user's catalog)")
+    schedule: str | None = Field(default=None, description="New cron expression (system.scheduled only)")
+    cooldown_seconds: int | None = Field(default=None, description="New min seconds between triggers")
+    status: str | None = Field(default=None, description="New status: 'active' or 'paused'")
 
 
 # ─── SDL entity (additive — platform reads typed entities) ────────────── #
@@ -90,7 +108,6 @@ class AutomationRule(sdl.Entity, sdl.Prioritized, sdl.WorkflowState):
     fail_count: int = sdl.field(default=0, role="automations.fail_count")
     last_error: str | None = None
     cooldown_seconds: int = sdl.field(default=0, role="automations.cooldown_seconds")
-    max_per_hour: int = sdl.field(default=0, role="automations.max_per_hour")
     created_at: str = sdl.field(default="", role="automations.created_at")
     user_id: str = sdl.field(default="", role="automations.user_id")
 

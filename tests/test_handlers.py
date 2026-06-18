@@ -12,7 +12,6 @@ from pydantic import ValidationError
 
 from constants import (
     DEFAULT_COOLDOWN_SECONDS,
-    DEFAULT_MAX_PER_HOUR,
     PROMPT_TRUNCATE_LEN,
     SKELETON_RULE_LIMIT,
 )
@@ -21,6 +20,7 @@ from models import (
     CreateAutomationParams,
     EventCatalog,
     RuleIdParams,
+    UpdateAutomationParams,
 )
 
 
@@ -38,7 +38,6 @@ class TestCreateAutomationParams:
         )
         assert p.event_type == "email.received"
         assert p.cooldown_seconds == DEFAULT_COOLDOWN_SECONDS
-        assert p.max_per_hour == DEFAULT_MAX_PER_HOUR
         assert p.schedule == ""
 
     def test_accepts_explicit_overrides(self):
@@ -47,11 +46,9 @@ class TestCreateAutomationParams:
             action_description="Daily digest.",
             schedule="0 9 * * *",
             cooldown_seconds=600,
-            max_per_hour=2,
         )
         assert p.schedule == "0 9 * * *"
         assert p.cooldown_seconds == 600
-        assert p.max_per_hour == 2
 
 
 class TestRuleIdParams:
@@ -94,4 +91,30 @@ def test_truncation_limits_are_positive():
     assert PROMPT_TRUNCATE_LEN > 0
     assert SKELETON_RULE_LIMIT > 0
     assert DEFAULT_COOLDOWN_SECONDS > 0
-    assert DEFAULT_MAX_PER_HOUR > 0
+
+
+# ─── UpdateAutomationParams ───────────────────────────────────────────── #
+
+class TestUpdateAutomationParams:
+    def test_requires_rule_id(self):
+        with pytest.raises(ValidationError):
+            UpdateAutomationParams()  # type: ignore[call-arg]
+
+    def test_accepts_rule_id_only(self):
+        p = UpdateAutomationParams(rule_id=228)
+        assert p.rule_id == 228
+        assert p.action_description is None
+        assert p.event_type is None
+        assert p.schedule is None
+        assert p.cooldown_seconds is None
+        assert p.status is None
+
+    def test_accepts_partial_edit(self):
+        p = UpdateAutomationParams(rule_id=1, action_description="Summarize new notes", cooldown_seconds=300)
+        assert p.action_description == "Summarize new notes"
+        assert p.cooldown_seconds == 300
+        assert p.event_type is None
+
+    def test_rejects_non_numeric_rule_id(self):
+        with pytest.raises(ValidationError):
+            UpdateAutomationParams(rule_id="x")  # type: ignore[arg-type]

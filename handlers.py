@@ -65,7 +65,6 @@ def _rule_summary(r: dict) -> dict:
         "fail_count":       r.get("fail_count", 0),
         "last_error":       r.get("last_error"),
         "cooldown_seconds": r.get("cooldown_seconds", 0),
-        "max_per_hour":     r.get("max_per_hour", 0),
         "created_at":       r.get("created_at", ""),
         "user_id":          r.get("user_id", ""),
     }
@@ -202,7 +201,6 @@ async def fn_create_automation(ctx, params: CreateAutomationParams) -> ActionRes
         "actions":          [{"message": params.action_description}],
         "interpretation":   params.action_description[:ACTION_DESC_TRUNCATE_LEN],
         "cooldown_seconds": params.cooldown_seconds,
-        "max_per_hour":     params.max_per_hour,
     }
 
     try:

@@ -12,7 +12,6 @@ SKELETON_RULE_LIMIT = 5  # Max rules summarized in skeleton.rules_summary
 
 # Rule defaults (mirrored on Auth GW side, here for Pydantic Field defaults)
 DEFAULT_COOLDOWN_SECONDS = 60
-DEFAULT_MAX_PER_HOUR     = 10
 
 # ctx.cache key + TTL for the platform event catalog
 CATALOG_CACHE_KEY         = "event_catalog"

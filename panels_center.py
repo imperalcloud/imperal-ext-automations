@@ -26,7 +26,6 @@ from constants import (
     PROMPT_TRUNCATE_LEN,
     EVENT_DESC_TRUNCATE_LEN,
     DEFAULT_COOLDOWN_SECONDS,
-    DEFAULT_MAX_PER_HOUR,
 )
 
 log = logging.getLogger("automations")
@@ -130,11 +129,6 @@ def _editor_card(catalog):
                     param_name="cooldown_seconds",
                     label="Cooldown (s) — min seconds between triggers",
                     min=10, max=3600, value=DEFAULT_COOLDOWN_SECONDS, step=10,
-                ),
-                ui.Slider(
-                    param_name="max_per_hour",
-                    label="Max triggers per hour",
-                    min=1, max=200, value=DEFAULT_MAX_PER_HOUR, step=1,
                 ),
             ],
         ),
