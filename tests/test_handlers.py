@@ -118,3 +118,48 @@ class TestUpdateAutomationParams:
     def test_rejects_non_numeric_rule_id(self):
         with pytest.raises(ValidationError):
             UpdateAutomationParams(rule_id="x")  # type: ignore[arg-type]
+
+
+# ─── fn_update_automation handler tests ──────────────────────────────────── #
+
+@pytest.mark.asyncio
+async def test_update_rejects_unknown_event_type_before_gw(ctx, monkeypatch):
+    async def _fake_catalog(_ctx):
+        return EventCatalog(entries=[CatalogEntry(event_type="email.received", description="d")])
+    monkeypatch.setattr("handlers.load_event_catalog_cached", _fake_catalog)
+    called = {"patched": False}
+    async def _fake_patch(_ctx, _rid, _patch):
+        called["patched"] = True
+        return True
+    monkeypatch.setattr("handlers.patch_rule", _fake_patch)
+    from handlers import fn_update_automation
+    res = await fn_update_automation(ctx, UpdateAutomationParams(rule_id=1, event_type="made.up.event"))
+    assert res.status == "error"
+    assert "not found" in (res.error or "").lower()
+    assert called["patched"] is False
+
+
+@pytest.mark.asyncio
+async def test_update_requires_cron_on_scheduled_edit(ctx, monkeypatch):
+    async def _fake_catalog(_ctx):
+        return EventCatalog(entries=[CatalogEntry(event_type="system.scheduled", description="cron")])
+    monkeypatch.setattr("handlers.load_event_catalog_cached", _fake_catalog)
+    from handlers import fn_update_automation
+    res = await fn_update_automation(ctx, UpdateAutomationParams(rule_id=1, event_type="system.scheduled"))
+    assert res.status == "error"
+    assert "cron" in (res.error or "").lower() or "schedule" in (res.error or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_update_patches_cooldown_via_gw(ctx, monkeypatch):
+    captured = {}
+    async def _fake_patch(_ctx, rid, patch):
+        captured["rid"] = rid
+        captured["patch"] = patch
+        return True
+    monkeypatch.setattr("handlers.patch_rule", _fake_patch)
+    from handlers import fn_update_automation
+    res = await fn_update_automation(ctx, UpdateAutomationParams(rule_id=42, cooldown_seconds=600))
+    assert res.status == "success"
+    assert captured["rid"] == 42
+    assert captured["patch"] == {"cooldown_seconds": 600}

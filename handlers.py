@@ -29,6 +29,7 @@ from models import (
     CreateAutomationParams,
     ListAutomationsParams,
     RuleIdParams,
+    UpdateAutomationParams,
 )
 
 log = logging.getLogger("automations")
@@ -190,6 +191,15 @@ async def fn_create_automation(ctx, params: CreateAutomationParams) -> ActionRes
         except (ValueError, KeyError) as exc:
             return ActionResult.error(f"Invalid cron '{params.schedule}': {exc}")
 
+    if params.action is not None:
+        actions = [{
+            "app_id": params.action.app_id,
+            "tool":   params.action.tool,
+            "args":   params.action.args,
+        }]
+    else:
+        actions = [{"message": params.action_description}]
+
     body = {
         "user_id":   _user_id(ctx),
         "tenant_id": _tenant_id(ctx),
@@ -198,7 +208,7 @@ async def fn_create_automation(ctx, params: CreateAutomationParams) -> ActionRes
             "event_type": params.event_type,
             **({"schedule": params.schedule} if params.schedule else {}),
         },
-        "actions":          [{"message": params.action_description}],
+        "actions":          actions,
         "interpretation":   params.action_description[:ACTION_DESC_TRUNCATE_LEN],
         "cooldown_seconds": params.cooldown_seconds,
     }
@@ -226,6 +236,83 @@ async def fn_create_automation(ctx, params: CreateAutomationParams) -> ActionRes
     return ActionResult.success(
         data={"rule_id": rule.get("id"), "rule": rule},
         summary=f"Rule #{rule.get('id')} created: {params.action_description[:PROMPT_TRUNCATE_LEN]}",
+    )
+
+
+@chat.function(
+    "update_automation",
+    action_type="write",
+    event="rule_updated",
+    chain_callable=True,
+    effects=["update:automation"],
+    id_projection="rule_id",
+    description=(
+        "Edit an existing automation rule in place (prompt/schedule/cooldown/status) "
+        "without delete+recreate; preserves rule_id and stats."
+    ),
+    data_model=AutomationActionReceipt,
+)
+async def fn_update_automation(ctx, params: UpdateAutomationParams) -> ActionResult:
+    """Patch an existing rule. Re-grounds any changed trigger/action before persisting."""
+    patch: dict = {}
+
+    if params.event_type is not None or params.schedule is not None:
+        catalog = await load_event_catalog_cached(ctx)
+        valid = catalog.valid_event_types
+        if params.event_type is not None:
+            if valid and params.event_type not in valid:
+                return ActionResult.error(
+                    f"Event '{params.event_type}' not found. Available: {', '.join(sorted(valid))}",
+                    retryable=True,
+                )
+        new_event = params.event_type
+        new_sched = params.schedule
+        if new_event == "system.scheduled" and not new_sched:
+            return ActionResult.error(
+                "schedule (cron) is required for system.scheduled.",
+                retryable=True,
+            )
+        if new_sched:
+            try:
+                from croniter import croniter
+                croniter(new_sched)
+            except (ValueError, KeyError) as exc:
+                return ActionResult.error(f"Invalid cron '{new_sched}': {exc}")
+        tf: dict = {}
+        if new_event is not None:
+            tf["event_type"] = new_event
+        if new_sched:
+            tf["schedule"] = new_sched
+        if tf:
+            patch["trigger_filter"] = tf
+
+    if params.action_description is not None:
+        patch["actions"] = [{"message": params.action_description}]
+        patch["interpretation"] = params.action_description[:ACTION_DESC_TRUNCATE_LEN]
+        patch["prompt"] = params.action_description
+
+    if params.cooldown_seconds is not None:
+        patch["cooldown_seconds"] = params.cooldown_seconds
+
+    if params.status is not None:
+        if params.status not in ("active", "paused"):
+            return ActionResult.error("status must be 'active' or 'paused'.", retryable=True)
+        patch["status"] = params.status
+
+    if not patch:
+        return ActionResult.error("Nothing to update — provide at least one field.", retryable=True)
+
+    try:
+        ok = await patch_rule(ctx, params.rule_id, patch)
+    except Exception as exc:
+        log.warning("update_automation: HTTP failed: %s", exc, exc_info=True)
+        return ActionResult.error(f"Failed to update rule #{params.rule_id}: {exc}")
+    if not ok:
+        return ActionResult.error(f"Failed to update rule #{params.rule_id}.")
+
+    return ActionResult.success(
+        data={"rule_id": params.rule_id, "status": patch.get("status", "")},
+        summary=f"Rule #{params.rule_id} updated",
     )
 
 
