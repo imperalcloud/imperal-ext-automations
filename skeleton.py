@@ -10,13 +10,18 @@ from __future__ import annotations
 import logging
 
 from app import ext
-from api import list_active_rules, load_event_catalog_cached, get_quota
+from api import (
+    list_active_rules,
+    load_event_catalog_cached,
+    load_capability_catalog_cached,
+    get_quota,
+)
 from constants import (
     SKELETON_RULE_LIMIT,
     PROMPT_TRUNCATE_LEN,
     EVENT_DESC_TRUNCATE_LEN,
 )
-from models import EventCatalog
+from models import EventCatalog, CapabilityCatalog
 
 log = logging.getLogger("automations")
 
@@ -45,6 +50,13 @@ async def skeleton_refresh_rules(ctx) -> dict:
         log.warning("skeleton: catalog fetch failed: %s", exc, exc_info=True)
         catalog = EventCatalog()
 
+    capabilities: CapabilityCatalog
+    try:
+        capabilities = await load_capability_catalog_cached(ctx)
+    except Exception as exc:
+        log.warning("skeleton: capability fetch failed: %s", exc, exc_info=True)
+        capabilities = CapabilityCatalog()
+
     quota: dict = {}
     try:
         quota = await get_quota(ctx)
@@ -71,6 +83,19 @@ async def skeleton_refresh_rules(ctx) -> dict:
                     "description": e.description[:EVENT_DESC_TRUNCATE_LEN],
                 }
                 for e in catalog.entries
+            ],
+            # Capability inventory (compact, no descriptions to bound tokens):
+            # the producer LLM grounds a StructuredAction (app_id, tool, args)
+            # against this. The GW gate rejects out-of-scope/unknown tools, so
+            # the full catalog is safe to surface. `*` on a param = required.
+            "available_tools": [
+                {
+                    "app_id":   c.app_id,
+                    "tool":     c.tool,
+                    "type":     c.action_type,
+                    "params":   [f"{p}*" for p in c.required_params] + list(c.optional_params),
+                }
+                for c in capabilities.entries
             ],
             "quota": {
                 "cap":       quota.get("cap"),

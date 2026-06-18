@@ -17,6 +17,11 @@ DEFAULT_COOLDOWN_SECONDS = 60
 CATALOG_CACHE_KEY         = "event_catalog"
 CATALOG_CACHE_TTL_SECONDS = 300
 
+# ctx.cache key for the platform capability catalog (per-app invokable tools
+# + param names) — published by the kernel alongside the event catalog. Reuses
+# CATALOG_CACHE_TTL_SECONDS. Lets the producer LLM ground a structured action.
+CAPABILITY_CACHE_KEY = "capability_catalog"
+
 # ctx.cache key + TTL for authoritative user-role lookup (per-user namespace)
 USER_ROLE_CACHE_KEY         = "user_role"
 USER_ROLE_CACHE_TTL_SECONDS = 60

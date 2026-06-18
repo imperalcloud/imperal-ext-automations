@@ -20,10 +20,14 @@ from constants import (
     HTTP_TIMEOUT_SECONDS,
     CATALOG_CACHE_KEY,
     CATALOG_CACHE_TTL_SECONDS,
+    CAPABILITY_CACHE_KEY,
     USER_ROLE_CACHE_KEY,
     USER_ROLE_CACHE_TTL_SECONDS,
 )
-from models import EventCatalog, CatalogEntry, UserRoleSnapshot
+from models import (
+    EventCatalog, CatalogEntry, UserRoleSnapshot,
+    CapabilityCatalog, CapabilityEntry,
+)
 
 log = logging.getLogger("automations")
 
@@ -177,6 +181,60 @@ async def load_event_catalog_cached(ctx) -> EventCatalog:
     return await ctx.cache.get_or_fetch(
         key=CATALOG_CACHE_KEY,
         model=EventCatalog,
+        fetcher=_fetch,
+        ttl_seconds=CATALOG_CACHE_TTL_SECONDS,
+    )
+
+
+# ─── Capability catalog (Redis-published by platform) ─────────────────── #
+
+async def _fetch_capability_catalog_raw() -> list[dict]:
+    """Read the kernel-published capability catalog directly from Redis.
+
+    Mirrors _fetch_event_catalog_raw: a small JSON list of per-app invokable
+    tools + param names; failure is non-fatal (empty list -> NL fallback).
+    """
+    if not REDIS_URL:
+        return []
+    try:
+        import redis.asyncio as aioredis  # local import — keeps cold path light
+        r = aioredis.from_url(REDIS_URL, decode_responses=True)
+        try:
+            raw = await r.get("imperal:automation:capability_catalog")
+        finally:
+            await r.aclose()
+    except Exception as exc:
+        log.warning("capability catalog fetch failed: %s", exc, exc_info=True)
+        return []
+
+    if not raw:
+        return []
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        log.warning("capability catalog JSON decode failed: %s", exc)
+        return []
+
+
+async def load_capability_catalog_cached(ctx) -> CapabilityCatalog:
+    """Typed capability catalog read through ctx.cache (TTL-managed)."""
+    async def _fetch() -> CapabilityCatalog:
+        raw = await _fetch_capability_catalog_raw()
+        return CapabilityCatalog(entries=[
+            CapabilityEntry(
+                app_id=e.get("app_id", ""),
+                tool=e.get("tool", ""),
+                action_type=e.get("action_type", "read"),
+                required_params=e.get("required_params") or [],
+                optional_params=e.get("optional_params") or [],
+            )
+            for e in raw
+            if e.get("tool")
+        ])
+
+    return await ctx.cache.get_or_fetch(
+        key=CAPABILITY_CACHE_KEY,
+        model=CapabilityCatalog,
         fetcher=_fetch,
         ttl_seconds=CATALOG_CACHE_TTL_SECONDS,
     )

@@ -286,7 +286,18 @@ async def fn_update_automation(ctx, params: UpdateAutomationParams) -> ActionRes
         if tf:
             patch["trigger_filter"] = tf
 
-    if params.action_description is not None:
+    if params.action is not None:
+        # Structured (grounded) edit — GW PATCH re-grounds it (tool exists,
+        # in scope, required args present) before persisting. Mirrors create.
+        patch["actions"] = [{
+            "app_id": params.action.app_id,
+            "tool":   params.action.tool,
+            "args":   params.action.args,
+        }]
+        if params.action_description is not None:
+            patch["interpretation"] = params.action_description[:ACTION_DESC_TRUNCATE_LEN]
+            patch["prompt"] = params.action_description
+    elif params.action_description is not None:
         patch["actions"] = [{"message": params.action_description}]
         patch["interpretation"] = params.action_description[:ACTION_DESC_TRUNCATE_LEN]
         patch["prompt"] = params.action_description

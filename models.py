@@ -70,6 +70,10 @@ class UpdateAutomationParams(BaseModel):
     schedule: str | None = Field(default=None, description="New cron expression (system.scheduled only)")
     cooldown_seconds: int | None = Field(default=None, description="New min seconds between triggers")
     status: str | None = Field(default=None, description="New status: 'active' or 'paused'")
+    action: Optional[StructuredAction] = Field(
+        default=None,
+        description="New resolved (app_id, tool, args) grounded action (WS2). Re-grounded by the GW. Omit to keep the existing action or use action_description for NL.",
+    )
 
 
 # ─── SDL entity (additive — platform reads typed entities) ────────────── #
@@ -203,6 +207,22 @@ class EventCatalog(BaseModel):
     @property
     def valid_event_types(self) -> set[str]:
         return {e.event_type for e in self.entries if e.event_type}
+
+
+class CapabilityEntry(BaseModel):
+    """One invokable @chat.function tool in the platform capability catalog."""
+    app_id: str = ""
+    tool: str = ""
+    action_type: str = "read"
+    required_params: list[str] = Field(default_factory=list)
+    optional_params: list[str] = Field(default_factory=list)
+
+
+class CapabilityCatalog(BaseModel):
+    """Platform capability catalog snapshot (per-app tools + param names),
+    cached via ctx.cache. Lets the producer emit a grounded StructuredAction
+    (app_id, tool, args) instead of an opaque free-text message."""
+    entries: list[CapabilityEntry] = Field(default_factory=list)
 
 
 class UserRoleSnapshot(BaseModel):
