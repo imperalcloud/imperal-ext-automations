@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.4.3",
   "app_id": "automations",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "name": "AI Cloud Agents",
   "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
   "icon": "icon.svg",
@@ -848,6 +848,35 @@
       ],
       "id_projection": "rule_id",
       "params_schema": {
+        "$defs": {
+          "StructuredAction": {
+            "description": "WS2 grounded action — the resolved (app_id, tool, args) the rule runs.\nOptional on create: when present the GW persists it instead of free text.",
+            "properties": {
+              "app_id": {
+                "description": "Extension that owns the tool, from the user's live scope",
+                "title": "App Id",
+                "type": "string"
+              },
+              "tool": {
+                "description": "@chat.function name the user can actually invoke",
+                "title": "Tool",
+                "type": "string"
+              },
+              "args": {
+                "additionalProperties": true,
+                "description": "Well-formed args for the tool",
+                "title": "Args",
+                "type": "object"
+              }
+            },
+            "required": [
+              "app_id",
+              "tool"
+            ],
+            "title": "StructuredAction",
+            "type": "object"
+          }
+        },
         "description": "Edit an existing automation rule in place (preserves rule_id + stats).",
         "properties": {
           "rule_id": {
@@ -919,6 +948,18 @@
             "default": null,
             "description": "New status: 'active' or 'paused'",
             "title": "Status"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/StructuredAction"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New resolved (app_id, tool, args) grounded action (WS2). Re-grounded by the GW. Omit to keep the existing action or use action_description for NL."
           }
         },
         "required": [
