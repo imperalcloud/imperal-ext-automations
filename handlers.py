@@ -19,6 +19,7 @@ from api import (
     delete_rule,
     load_event_catalog_cached,
     fetch_user_role_cached,
+    get_quota,
 )
 from constants import ACTION_DESC_TRUNCATE_LEN, PROMPT_TRUNCATE_LEN
 from models import (
@@ -209,6 +210,17 @@ async def fn_create_automation(ctx, params: CreateAutomationParams) -> ActionRes
     except Exception as exc:
         log.warning("create_automation: HTTP failed: %s", exc, exc_info=True)
         return ActionResult.error(f"Failed to create automation: {exc}")
+
+    if isinstance(rule, dict) and rule.get("error") == "quota_exceeded":
+        q = rule.get("quota") or {}
+        # Emit structured FACTS — narrator owns phrasing (ICNLI).
+        # ActionResult.error only accepts a str message; encode facts inline so
+        # the kernel narrator can render them in the session language.
+        return ActionResult.error(
+            f"automation_quota_exceeded: cap={q.get('cap')} used={q.get('used')}"
+            f" plan={q.get('plan')} source={q.get('source')}",
+            retryable=False,
+        )
 
     if not rule:
         return ActionResult.error("Failed to create automation rule.")

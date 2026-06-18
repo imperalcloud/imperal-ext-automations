@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 
 from app import ext
-from api import list_active_rules, load_event_catalog_cached
+from api import list_active_rules, load_event_catalog_cached, get_quota
 from constants import (
     SKELETON_RULE_LIMIT,
     PROMPT_TRUNCATE_LEN,
@@ -45,6 +45,12 @@ async def skeleton_refresh_rules(ctx) -> dict:
         log.warning("skeleton: catalog fetch failed: %s", exc, exc_info=True)
         catalog = EventCatalog()
 
+    quota: dict = {}
+    try:
+        quota = await get_quota(ctx)
+    except Exception as exc:
+        log.warning("skeleton: quota fetch failed: %s", exc, exc_info=True)
+
     return {
         "response": {
             "total":   len(rules),
@@ -66,5 +72,12 @@ async def skeleton_refresh_rules(ctx) -> dict:
                 }
                 for e in catalog.entries
             ],
+            "quota": {
+                "cap":       quota.get("cap"),
+                "used":      quota.get("used"),
+                "remaining": quota.get("remaining"),
+                "unlimited": quota.get("unlimited", False),
+                "plan":      quota.get("plan"),
+            },
         }
     }

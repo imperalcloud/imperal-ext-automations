@@ -65,7 +65,12 @@ async def list_active_rules(ctx, *, tenant_id: str) -> list[dict]:
 
 
 async def create_rule(ctx, *, body: dict) -> dict | None:
-    """Create a rule. Returns the new rule dict, or None on failure."""
+    """Create a rule. Returns the new rule dict, or None on failure.
+
+    On quota breach (HTTP 429) returns
+    ``{'error': 'quota_exceeded', 'quota': {...}}`` so callers can surface
+    the structured quota facts to the narrator without coupling to HTTP details.
+    """
     resp = await ctx.http.post(
         _url("/v1/automations/internal/create"),
         json=body,
@@ -74,8 +79,34 @@ async def create_rule(ctx, *, body: dict) -> dict | None:
     )
     if resp.status_code in (200, 201):
         return resp.body if isinstance(resp.body, dict) else None
+    if resp.status_code == 429 and isinstance(resp.body, dict):
+        detail = resp.body.get("detail", resp.body)
+        if isinstance(detail, dict) and detail.get("error_code") == "AUTOMATION_QUOTA_EXCEEDED":
+            return {"error": "quota_exceeded", "quota": detail.get("quota", {})}
     log.warning("create_rule: HTTP %s body=%s", resp.status_code, resp.body)
     return None
+
+
+async def get_quota(ctx) -> dict:
+    """Effective automation cap + usage for the current user (cascade-resolved on GW).
+
+    Returns a dict with ``cap``, ``used``, ``remaining``, ``unlimited``, ``plan``.
+    Returns an empty dict on failure (fail-soft — caller receives degraded skeleton).
+    """
+    user_id   = ctx.user.imperal_id
+    tenant_id = getattr(ctx.user, "tenant_id", "default")
+    try:
+        resp = await ctx.http.get(
+            _url("/v1/automations/internal/quota"),
+            params={"user_id": user_id, "tenant_id": tenant_id},
+            headers=_service_headers(),
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        if resp.status_code == 200 and isinstance(resp.body, dict):
+            return resp.body
+    except Exception as exc:
+        log.warning("get_quota failed: %s", exc, exc_info=True)
+    return {}
 
 
 async def patch_rule(ctx, rule_id: int, patch: dict) -> bool:
