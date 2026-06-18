@@ -1,8 +1,8 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "5.2.1",
+  "sdk_version": "5.4.3",
   "app_id": "automations",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "name": "AI Cloud Agents",
   "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
   "icon": "icon.svg",
@@ -273,12 +273,6 @@
                 "title": "Cooldown Seconds",
                 "type": "integer",
                 "x-sdl-role": "automations.cooldown_seconds"
-              },
-              "max_per_hour": {
-                "default": 0,
-                "title": "Max Per Hour",
-                "type": "integer",
-                "x-sdl-role": "automations.max_per_hour"
               },
               "created_at": {
                 "default": "",
@@ -604,12 +598,6 @@
             "type": "integer",
             "x-sdl-role": "automations.cooldown_seconds"
           },
-          "max_per_hour": {
-            "default": 0,
-            "title": "Max Per Hour",
-            "type": "integer",
-            "x-sdl-role": "automations.max_per_hour"
-          },
           "created_at": {
             "default": "",
             "title": "Created At",
@@ -647,6 +635,35 @@
       ],
       "id_projection": "",
       "params_schema": {
+        "$defs": {
+          "StructuredAction": {
+            "description": "WS2 grounded action — the resolved (app_id, tool, args) the rule runs.\nOptional on create: when present the GW persists it instead of free text.",
+            "properties": {
+              "app_id": {
+                "description": "Extension that owns the tool, from the user's live scope",
+                "title": "App Id",
+                "type": "string"
+              },
+              "tool": {
+                "description": "@chat.function name the user can actually invoke",
+                "title": "Tool",
+                "type": "string"
+              },
+              "args": {
+                "additionalProperties": true,
+                "description": "Well-formed args for the tool",
+                "title": "Args",
+                "type": "object"
+              }
+            },
+            "required": [
+              "app_id",
+              "tool"
+            ],
+            "title": "StructuredAction",
+            "type": "object"
+          }
+        },
         "description": "Create a new automation rule.",
         "properties": {
           "event_type": {
@@ -671,11 +688,17 @@
             "title": "Cooldown Seconds",
             "type": "integer"
           },
-          "max_per_hour": {
-            "default": 10,
-            "description": "Max triggers per hour",
-            "title": "Max Per Hour",
-            "type": "integer"
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/StructuredAction"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Resolved (app_id, tool, args) for grounded persistence (WS2). Omit to keep NL action."
           }
         },
         "required": [
@@ -810,6 +833,225 @@
         "x-sdl": "entity"
       },
       "event": "rule_created",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "tool_automations_chat"
+    },
+    {
+      "name": "update_automation",
+      "description": "Edit an existing automation rule in place (prompt/schedule/cooldown/status) without delete+recreate; preserves rule_id and stats.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "update:automation"
+      ],
+      "id_projection": "rule_id",
+      "params_schema": {
+        "description": "Edit an existing automation rule in place (preserves rule_id + stats).",
+        "properties": {
+          "rule_id": {
+            "description": "The rule ID to edit",
+            "title": "Rule Id",
+            "type": "integer"
+          },
+          "action_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New plain-language action (re-grounded)",
+            "title": "Action Description"
+          },
+          "event_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New trigger event (must exist in the user's catalog)",
+            "title": "Event Type"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New cron expression (system.scheduled only)",
+            "title": "Schedule"
+          },
+          "cooldown_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New min seconds between triggers",
+            "title": "Cooldown Seconds"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New status: 'active' or 'paused'",
+            "title": "Status"
+          }
+        },
+        "required": [
+          "rule_id"
+        ],
+        "title": "UpdateAutomationParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Receipt entity for the write/destructive rule verbs that return a small\npayload keyed by ``rule_id`` (create / pause / resume / delete) — kind='rule'.\n\nField names mirror the ACTUAL handler return-dict keys verbatim\n(I-EXT-RECORD-FIELD-NAMING-SYMMETRIC):\n  * create_automation -> {\"rule_id\", \"rule\"}\n  * pause_automation  -> {\"rule_id\", \"status\"}\n  * resume_automation -> {\"rule_id\", \"status\", \"trigger_count_reset\"}\n  * delete_automation -> {\"rule_id\", \"deleted\"}\nOne field-symmetric receipt covers all four (reuse, do not invent per-verb\nreceipts). The canonical id is the rule_id; the title is drawn from the\nembedded rule's prompt/name where present (create echoes the full rule).",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "rule_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "rule": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule"
+          },
+          "deleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Deleted"
+          },
+          "trigger_count_reset": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trigger Count Reset"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "AutomationActionReceipt",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "rule_updated",
       "background": false,
       "long_running": false,
       "scopes": [],

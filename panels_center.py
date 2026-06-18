@@ -104,34 +104,21 @@ def _editor_card(catalog):
             {"value": "notes.created",    "label": "notes.created — when a note is created"},
         ]
 
+    form = ui.Form(
+        action="create_automation",
+        submit_label="Create rule",
+        children=[
+            ui.Select(param_name="event_type", placeholder="Trigger event…", options=event_options),
+            ui.TextArea(param_name="action_description", placeholder="What should happen when the trigger fires? Plain language.", rows=3),
+            ui.Input(param_name="schedule", placeholder="Cron (only for system.scheduled), e.g. '0 9 * * *'"),
+            ui.Slider(param_name="cooldown_seconds", label="Cooldown (s) — min seconds between triggers", min=10, max=3600, value=DEFAULT_COOLDOWN_SECONDS, step=10),
+        ],
+    )
+    form.props["confirm"] = "Create this automation? It will run on its own when the trigger fires."
     return ui.Card(
         title="New rule",
-        subtitle="Pick a trigger event, describe what should happen, set safety caps.",
-        content=ui.Form(
-            action="create_automation",
-            submit_label="Create rule",
-            children=[
-                ui.Select(
-                    param_name="event_type",
-                    placeholder="Trigger event…",
-                    options=event_options,
-                ),
-                ui.TextArea(
-                    param_name="action_description",
-                    placeholder="What should happen when the trigger fires? Plain language.",
-                    rows=3,
-                ),
-                ui.Input(
-                    param_name="schedule",
-                    placeholder="Cron (only for system.scheduled), e.g. '0 9 * * *'",
-                ),
-                ui.Slider(
-                    param_name="cooldown_seconds",
-                    label="Cooldown (s) — min seconds between triggers",
-                    min=10, max=3600, value=DEFAULT_COOLDOWN_SECONDS, step=10,
-                ),
-            ],
-        ),
+        subtitle="Pick a trigger event, describe what should happen, set the cooldown.",
+        content=form,
     )
 
 
@@ -174,6 +161,6 @@ def _tips():
         "with a cron expression (`'0 9 * * *'` = every day at 09:00 UTC).\n"
         "- The **cooldown** prevents firing on every event in a burst — "
         "good for `email.received` if you only care about the first one a minute.\n"
-        "- The **max-per-hour** is the hard safety cap; even a misbehaving "
-        "trigger can't blow past it.\n"
+        "- To update an existing rule's prompt, schedule, or cooldown, use the chat: "
+        "'Update rule 3 to run at 10 AM instead.'\n"
     )
