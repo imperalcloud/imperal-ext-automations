@@ -74,6 +74,7 @@ async def skeleton_refresh_rules(ctx) -> dict:
                     "rule_id": r["id"],
                     "prompt":  (r.get("prompt") or "")[:PROMPT_TRUNCATE_LEN],
                     "status":  r.get("status"),
+                    "notify_mode": r.get("notify_mode", "all"),
                 }
                 for r in rules[:SKELETON_RULE_LIMIT]
             ],

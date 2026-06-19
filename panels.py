@@ -105,6 +105,7 @@ def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
     runs    = rule.get("trigger_count", 0)
     last    = _format_date(rule.get("last_triggered", ""))
     created = _format_date(rule.get("created_at", ""))
+    nmode   = rule.get("notify_mode", "all")
 
     badge_color = (
         "green"  if status == "active" else
@@ -146,9 +147,28 @@ def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
                     on_click=ui.Call("delete_automation", rule_id=rid),
                 ),
             ], direction="horizontal"),
+            ui.Divider("Notifications"),
+            ui.Stack([
+                ui.Button(
+                    "All", icon="Bell", size="sm",
+                    variant=("primary" if nmode == "all" else "outline"),
+                    on_click=ui.Call("update_automation", rule_id=rid, notify_mode="all"),
+                ),
+                ui.Button(
+                    "Failures", icon="BellMinus", size="sm",
+                    variant=("primary" if nmode == "failures" else "outline"),
+                    on_click=ui.Call("update_automation", rule_id=rid, notify_mode="failures"),
+                ),
+                ui.Button(
+                    "Off", icon="BellOff", size="sm",
+                    variant=("primary" if nmode == "off" else "outline"),
+                    on_click=ui.Call("update_automation", rule_id=rid, notify_mode="off"),
+                ),
+            ], direction="horizontal"),
             ui.KeyValue([
                 {"key": "ID",        "value": str(rid)},
                 {"key": "Cooldown",  "value": f"{rule.get('cooldown_seconds', 60)}s"},
+                {"key": "Notify",    "value": nmode},
                 {"key": "Successes", "value": str(rule.get('success_count', 0))},
                 {"key": "Failures",  "value": str(rule.get('fail_count', 0))},
             ], columns=2),

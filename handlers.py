@@ -66,6 +66,7 @@ def _rule_summary(r: dict) -> dict:
         "fail_count":       r.get("fail_count", 0),
         "last_error":       r.get("last_error"),
         "cooldown_seconds": r.get("cooldown_seconds", 0),
+        "notify_mode":      r.get("notify_mode", "all"),
         "created_at":       r.get("created_at", ""),
         "user_id":          r.get("user_id", ""),
     }
@@ -211,6 +212,7 @@ async def fn_create_automation(ctx, params: CreateAutomationParams) -> ActionRes
         "actions":          actions,
         "interpretation":   params.action_description[:ACTION_DESC_TRUNCATE_LEN],
         "cooldown_seconds": params.cooldown_seconds,
+        "notify_mode":      params.notify_mode,
     }
 
     try:
@@ -309,6 +311,11 @@ async def fn_update_automation(ctx, params: UpdateAutomationParams) -> ActionRes
         if params.status not in ("active", "paused"):
             return ActionResult.error("status must be 'active' or 'paused'.", retryable=True)
         patch["status"] = params.status
+
+    if params.notify_mode is not None:
+        if params.notify_mode not in ("all", "failures", "off"):
+            return ActionResult.error("notify_mode must be 'all', 'failures', or 'off'.", retryable=True)
+        patch["notify_mode"] = params.notify_mode
 
     if not patch:
         return ActionResult.error("Nothing to update — provide at least one field.", retryable=True)

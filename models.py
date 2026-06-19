@@ -47,6 +47,10 @@ class CreateAutomationParams(BaseModel):
         default=None,
         description="Resolved (app_id, tool, args) for grounded persistence (WS2). Omit to keep NL action.",
     )
+    notify_mode: str = Field(
+        default="all",
+        description="Run notifications (bell + chat): 'all' (default) / 'failures' / 'off'.",
+    )
 
 
 class RuleIdParams(BaseModel):
@@ -73,6 +77,10 @@ class UpdateAutomationParams(BaseModel):
     action: Optional[StructuredAction] = Field(
         default=None,
         description="New resolved (app_id, tool, args) grounded action (WS2). Re-grounded by the GW. Omit to keep the existing action or use action_description for NL.",
+    )
+    notify_mode: str | None = Field(
+        default=None,
+        description="Change run notifications (bell + chat): 'all' / 'failures' / 'off'. Omit to keep current.",
     )
 
 
@@ -114,6 +122,7 @@ class AutomationRule(sdl.Entity, sdl.Prioritized, sdl.WorkflowState):
     cooldown_seconds: int = sdl.field(default=0, role="automations.cooldown_seconds")
     created_at: str = sdl.field(default="", role="automations.created_at")
     user_id: str = sdl.field(default="", role="automations.user_id")
+    notify_mode: str = sdl.field(default="all", role="automations.notify_mode")
 
     @model_validator(mode="before")
     @classmethod
