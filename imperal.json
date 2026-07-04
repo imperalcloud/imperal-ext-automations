@@ -8,6 +8,16 @@
   "icon": "icon.svg",
   "actions_explicit": true,
   "system": false,
+  "panels": [
+    {
+      "panel_id": "workshop",
+      "slot": "center",
+      "title": "Automation Workshop",
+      "icon": "Workflow",
+      "center_overlay": true,
+      "refresh": "on_event:rule_created,rule_paused,rule_resumed,rule_deleted,rule_updated"
+    }
+  ],
   "capabilities": [
     "automations:read",
     "automations:write",

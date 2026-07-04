@@ -123,6 +123,10 @@ class AutomationRule(sdl.Entity, sdl.Prioritized, sdl.WorkflowState):
     created_at: str = sdl.field(default="", role="automations.created_at")
     user_id: str = sdl.field(default="", role="automations.user_id")
     notify_mode: str = sdl.field(default="all", role="automations.notify_mode")
+    trigger_filter: dict = Field(default_factory=dict)
+    actions: list[dict] = Field(default_factory=list)
+    interpretation: str = ""
+    last_triggered: str = ""
 
     @model_validator(mode="before")
     @classmethod

@@ -7,12 +7,10 @@ from datetime import datetime
 from imperal_sdk import ui
 
 from app import ext
-from api import list_active_rules, load_event_catalog_cached, fetch_user_role_cached
+from api import list_active_rules, fetch_user_role_cached
 from constants import (
     OWNER_PREFIX_LEN,
     PROMPT_TRUNCATE_LEN,
-    EVENT_DESC_TRUNCATE_LEN,
-    DEFAULT_COOLDOWN_SECONDS,
 )
 
 log = logging.getLogger("automations")
@@ -36,7 +34,7 @@ def _format_date(iso_str: str) -> str:
     default_width=320,
     min_width=240,
     max_width=500,
-    refresh="on_event:rule_created,rule_paused,rule_resumed,rule_deleted",
+    refresh="on_event:rule_created,rule_paused,rule_resumed,rule_deleted,rule_updated",
 )
 async def automations_sidebar(ctx, **kwargs):
     user_id   = ctx.user.imperal_id
@@ -94,8 +92,49 @@ async def automations_sidebar(ctx, **kwargs):
     # __panel__workshop to setCenterOverlay → ExtensionPage shifts
     # chat to a 380px right rail → Workshop fills the center.
     root = ui.Stack(children=children, gap=2, className="min-h-full")
-    root.props["auto_action"] = ui.Call("__panel__workshop")
+    if not kwargs.get("__center_opened"):
+        root.props["auto_action"] = ui.Call("__panel__workshop", __center_opened=True)
     return root
+
+
+def _rule_trigger_summary(rule: dict) -> str:
+    trigger_filter = rule.get("trigger_filter") or {}
+    event_type = trigger_filter.get("event_type") or "manual"
+    schedule = trigger_filter.get("schedule") or ""
+    return f"{event_type} · {schedule}" if schedule else event_type
+
+
+def _rule_action_preview(rule: dict):
+    actions = rule.get("actions") or []
+    if actions and isinstance(actions[0], dict):
+        action = actions[0]
+        if action.get("tool"):
+            app_id = action.get("app_id") or "app"
+            tool = action.get("tool") or "tool"
+            return ui.KeyValue([
+                {"key": "Action", "value": f"{app_id}.{tool}"},
+                {"key": "Args", "value": str(action.get("args") or {})},
+            ], columns=1)
+        if action.get("message"):
+            return ui.Markdown(f"**Action**\n\n{action.get('message')}")
+    interpretation = (rule.get("interpretation") or "").strip()
+    if interpretation:
+        return ui.Markdown(f"**Action**\n\n{interpretation}")
+    return ui.Markdown("**Action**\n\nNo action preview available.")
+
+
+def _rule_detail_grid(rule: dict):
+    last_error = (rule.get("last_error") or "").strip() or "—"
+    return ui.KeyValue([
+        {"key": "Trigger", "value": _rule_trigger_summary(rule)},
+        {"key": "Cooldown", "value": f"{rule.get('cooldown_seconds', 60)}s"},
+        {"key": "Notify", "value": rule.get("notify_mode", "all")},
+        {"key": "Runs", "value": str(rule.get("trigger_count", 0))},
+        {"key": "Successes", "value": str(rule.get("success_count", 0))},
+        {"key": "Failures", "value": str(rule.get("fail_count", 0))},
+        {"key": "Last triggered", "value": _format_date(rule.get("last_triggered", "")) or "—"},
+        {"key": "Last error", "value": last_error[:140]},
+    ], columns=2)
 
 
 def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
@@ -121,6 +160,9 @@ def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
         sub.append(f"Last: {last}")
     if created:
         sub.append(f"Created: {created}")
+    event_type = (rule.get("trigger_filter") or {}).get("event_type", "")
+    if event_type:
+        sub.append(f"Event: {event_type}")
     if is_admin and rule.get("user_id") != viewer_id:
         sub.append(f"Owner: {rule.get('user_id', '?')[:OWNER_PREFIX_LEN]}")
 
@@ -135,6 +177,9 @@ def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
         badge=ui.Badge(status, color=badge_color),
         expandable=True,
         expanded_content=[
+            ui.Markdown(f"**Rule #{rid}**\n\n{rule.get('prompt') or 'No description'}"),
+            _rule_detail_grid(rule),
+            _rule_action_preview(rule),
             ui.Stack([
                 ui.Button(
                     toggle_label, icon=toggle_icon,
@@ -142,11 +187,16 @@ def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
                     on_click=ui.Call(toggle_fn, rule_id=rid),
                 ),
                 ui.Button(
+                    "Open editor", icon="SquarePen",
+                    variant="outline", size="sm",
+                    on_click=ui.Call("__panel__workshop", edit_rule_id=rid, __center_opened=True),
+                ),
+                ui.Button(
                     "Delete", icon="Trash2",
                     variant="destructive", size="sm",
                     on_click=ui.Call("delete_automation", rule_id=rid),
                 ),
-            ], direction="horizontal"),
+            ], direction="horizontal", wrap=True),
             ui.Divider("Notifications"),
             ui.Stack([
                 ui.Button(
@@ -164,7 +214,7 @@ def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
                     variant=("primary" if nmode == "off" else "outline"),
                     on_click=ui.Call("update_automation", rule_id=rid, notify_mode="off"),
                 ),
-            ], direction="horizontal"),
+            ], direction="horizontal", wrap=True),
             ui.KeyValue([
                 {"key": "ID",        "value": str(rid)},
                 {"key": "Cooldown",  "value": f"{rule.get('cooldown_seconds', 60)}s"},
@@ -172,10 +222,9 @@ def _rule_list_item(rule: dict, *, is_admin: bool, viewer_id: str):
                 {"key": "Successes", "value": str(rule.get('success_count', 0))},
                 {"key": "Failures",  "value": str(rule.get('fail_count', 0))},
             ], columns=2),
+            ui.Markdown(
+                "To change the trigger, schedule, or action, open the editor. "
+                "Deep edits stay in-place via `update_automation`, so the rule keeps its stats."
+            ),
         ],
-        actions=[{
-            "icon":     toggle_icon,
-            "on_click": ui.Call(toggle_fn, rule_id=rid),
-            "label":    toggle_label,
-        }],
     )

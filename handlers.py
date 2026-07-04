@@ -57,6 +57,8 @@ async def _is_admin(ctx) -> bool:
 
 
 def _rule_summary(r: dict) -> dict:
+    trigger_filter = r.get("trigger_filter") or {}
+    actions = r.get("actions") or []
     return {
         "rule_id":          r["id"],
         "prompt":           r.get("prompt", ""),
@@ -69,6 +71,10 @@ def _rule_summary(r: dict) -> dict:
         "notify_mode":      r.get("notify_mode", "all"),
         "created_at":       r.get("created_at", ""),
         "user_id":          r.get("user_id", ""),
+        "trigger_filter":   trigger_filter,
+        "actions":          actions,
+        "interpretation":   r.get("interpretation", ""),
+        "last_triggered":   r.get("last_triggered", ""),
     }
 
 
