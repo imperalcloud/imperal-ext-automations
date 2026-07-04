@@ -169,9 +169,9 @@ def _edit_form(catalog, rule: dict):
         submit_label="Save changes",
         children=[
             ui.Hidden(param_name="rule_id", value=str(rule.get("id", ""))),
+            ui.Markdown("**Trigger event**"),
             ui.Select(
                 param_name="event_type",
-                label="Trigger event",
                 placeholder="Trigger event…",
                 options=_event_options(catalog),
                 value=trigger_filter.get("event_type", ""),
@@ -183,9 +183,9 @@ def _edit_form(catalog, rule: dict):
                 rows=4,
                 value=_edit_action_description(rule),
             ),
+            ui.Markdown("**Schedule (cron)**"),
             ui.Input(
                 param_name="schedule",
-                label="Schedule (cron)",
                 placeholder="Only for system.scheduled, e.g. 0 9 * * *",
                 value=trigger_filter.get("schedule", ""),
             ),
@@ -197,9 +197,9 @@ def _edit_form(catalog, rule: dict):
                 value=int(rule.get("cooldown_seconds") or DEFAULT_COOLDOWN_SECONDS),
                 step=10,
             ),
+            ui.Markdown("**Run notifications**"),
             ui.Select(
                 param_name="notify_mode",
-                label="Run notifications",
                 options=[
                     {"value": "all", "label": "All runs"},
                     {"value": "failures", "label": "Only failures"},
@@ -207,9 +207,9 @@ def _edit_form(catalog, rule: dict):
                 ],
                 value=rule.get("notify_mode", "all"),
             ),
+            ui.Markdown("**Status**"),
             ui.Select(
                 param_name="status",
-                label="Status",
                 options=[
                     {"value": "active", "label": "Active"},
                     {"value": "paused", "label": "Paused"},
