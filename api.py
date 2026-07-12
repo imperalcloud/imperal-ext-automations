@@ -26,7 +26,7 @@ from constants import (
 )
 from models import (
     EventCatalog, CatalogEntry, UserRoleSnapshot,
-    CapabilityCatalog, CapabilityEntry,
+    CapabilityCatalog, CapabilityEntry, CapabilityPageIndex,
 )
 
 log = logging.getLogger("automations")
@@ -232,12 +232,69 @@ async def load_capability_catalog_cached(ctx) -> CapabilityCatalog:
             if e.get("tool")
         ])
 
-    return await ctx.cache.get_or_fetch(
-        key=CAPABILITY_CACHE_KEY,
-        model=CapabilityCatalog,
-        fetcher=_fetch,
-        ttl_seconds=CATALOG_CACHE_TTL_SECONDS,
-    )
+    # PAGED cache (live 2026-07-12): the whole-platform catalog outgrew the
+    # single 64KB cache entry (83,460 bytes > I-CACHE-VALUE-SIZE-CAP-64KB) and
+    # the oversized WRITE raised out of get_or_fetch — blanking the catalog
+    # every turn. Pages each stay comfortably under the cap, and ANY cache
+    # failure (read or write) degrades to the fresh fetch: caching is an
+    # optimization, never the correctness path.
+    try:
+        idx = await ctx.cache.get(f"{CAPABILITY_CACHE_KEY}:idx", CapabilityPageIndex)
+        if idx and idx.pages > 0:
+            pages = []
+            for i in range(idx.pages):
+                page = await ctx.cache.get(f"{CAPABILITY_CACHE_KEY}:p{i}", CapabilityCatalog)
+                if page is None:          # expired/partial -> refetch fresh
+                    pages = None
+                    break
+                pages.append(page)
+            if pages is not None:
+                return CapabilityCatalog(
+                    entries=[e for pg in pages for e in pg.entries])
+    except Exception as exc:
+        log.warning("capability cache read skipped: %s", exc)
+
+    catalog = await _fetch()
+
+    try:
+        page_lists = _paginate_capabilities(catalog.entries, _CAP_PAGE_MAX_BYTES)
+        for i, page_entries in enumerate(page_lists):
+            await ctx.cache.set(f"{CAPABILITY_CACHE_KEY}:p{i}",
+                                CapabilityCatalog(entries=page_entries),
+                                ttl_seconds=CATALOG_CACHE_TTL_SECONDS)
+        # Index goes LAST so readers never see it point at missing pages.
+        await ctx.cache.set(f"{CAPABILITY_CACHE_KEY}:idx",
+                            CapabilityPageIndex(pages=len(page_lists)),
+                            ttl_seconds=CATALOG_CACHE_TTL_SECONDS)
+    except Exception as exc:
+        log.warning("capability cache write skipped (serving uncached): %s", exc)
+
+    return catalog
+
+
+# Page payload budget — comfortably under the 64KB envelope cap so the
+# serialized page + envelope wrapper never trips the SDK size guard.
+_CAP_PAGE_MAX_BYTES = 45_000
+
+
+def _paginate_capabilities(entries: list, max_bytes: int) -> list[list]:
+    """Greedy LOSSLESS split of catalog entries into pages whose serialized
+    size stays under ``max_bytes``. Always at least one page; a single
+    pathological entry larger than the budget still ships alone (the SDK
+    guard is the final authority for that page)."""
+    pages: list[list] = []
+    cur: list = []
+    cur_bytes = 0
+    for e in entries:
+        size = len(e.model_dump_json().encode("utf-8")) + 1
+        if cur and cur_bytes + size > max_bytes:
+            pages.append(cur)
+            cur, cur_bytes = [], 0
+        cur.append(e)
+        cur_bytes += size
+    if cur:
+        pages.append(cur)
+    return pages or [[]]
 
 
 # ─── Authoritative user role (workaround for kernel ctx.user.role drift) ── #

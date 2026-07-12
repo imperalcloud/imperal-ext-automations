@@ -1,23 +1,13 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "5.4.3",
+  "sdk_version": "5.9.3",
   "app_id": "automations",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "name": "AI Cloud Agents",
   "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
   "icon": "icon.svg",
   "actions_explicit": true,
   "system": false,
-  "panels": [
-    {
-      "panel_id": "workshop",
-      "slot": "center",
-      "title": "Automation Workshop",
-      "icon": "Workflow",
-      "center_overlay": true,
-      "refresh": "on_event:rule_created,rule_paused,rule_resumed,rule_deleted,rule_updated"
-    }
-  ],
   "capabilities": [
     "automations:read",
     "automations:write",
@@ -301,6 +291,29 @@
                 "title": "Notify Mode",
                 "type": "string",
                 "x-sdl-role": "automations.notify_mode"
+              },
+              "trigger_filter": {
+                "additionalProperties": true,
+                "title": "Trigger Filter",
+                "type": "object"
+              },
+              "actions": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "title": "Actions",
+                "type": "array"
+              },
+              "interpretation": {
+                "default": "",
+                "title": "Interpretation",
+                "type": "string"
+              },
+              "last_triggered": {
+                "default": "",
+                "title": "Last Triggered",
+                "type": "string"
               }
             },
             "required": [
@@ -631,6 +644,29 @@
             "title": "Notify Mode",
             "type": "string",
             "x-sdl-role": "automations.notify_mode"
+          },
+          "trigger_filter": {
+            "additionalProperties": true,
+            "title": "Trigger Filter",
+            "type": "object"
+          },
+          "actions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "interpretation": {
+            "default": "",
+            "title": "Interpretation",
+            "type": "string"
+          },
+          "last_triggered": {
+            "default": "",
+            "title": "Last Triggered",
+            "type": "string"
           }
         },
         "required": [
@@ -1625,5 +1661,19 @@
     "on_install": {
       "signature": "(ctx) -> 'None'"
     }
-  }
+  },
+  "panels": [
+    {
+      "panel_id": "sidebar",
+      "slot": "left",
+      "title": "AI Agents",
+      "tree": {}
+    },
+    {
+      "panel_id": "workshop",
+      "slot": "center",
+      "title": "Automation Workshop",
+      "tree": {}
+    }
+  ]
 }

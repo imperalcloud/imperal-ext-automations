@@ -238,6 +238,15 @@ class CapabilityCatalog(BaseModel):
     entries: list[CapabilityEntry] = Field(default_factory=list)
 
 
+class CapabilityPageIndex(BaseModel):
+    """Page count for the PAGED capability-catalog cache (live 2026-07-12:
+    the catalog outgrew the single 64KB cache entry — 83,460 bytes — and the
+    oversized write raised out of get_or_fetch, blanking the whole catalog).
+    Pages live under `{CAPABILITY_CACHE_KEY}:p{i}`; this index under
+    `{CAPABILITY_CACHE_KEY}:idx`."""
+    pages: int = 0
+
+
 class UserRoleSnapshot(BaseModel):
     """Authoritative user role from auth-gw, cached via ctx.cache.
 
