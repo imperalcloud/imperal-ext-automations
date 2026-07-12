@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.3",
   "app_id": "automations",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "name": "AI Cloud Agents",
   "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
   "icon": "icon.svg",
@@ -1667,13 +1667,22 @@
       "panel_id": "sidebar",
       "slot": "left",
       "title": "AI Agents",
-      "tree": {}
+      "tree": {},
+      "icon": "Bot",
+      "refresh": "on_event:rule_created,rule_paused,rule_resumed,rule_deleted,rule_updated",
+      "center_overlay": false,
+      "default_width": 320,
+      "min_width": 240,
+      "max_width": 500
     },
     {
       "panel_id": "workshop",
       "slot": "center",
       "title": "Automation Workshop",
-      "tree": {}
+      "tree": {},
+      "icon": "Workflow",
+      "refresh": "on_event:rule_created,rule_paused,rule_resumed,rule_deleted,rule_updated",
+      "center_overlay": true
     }
   ]
 }

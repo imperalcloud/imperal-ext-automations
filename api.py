@@ -1,14 +1,10 @@
 """Automations · Auth Gateway client.
 
 Federal-clean wrapper around ``ctx.http`` for ``/v1/automations/internal/*``
-endpoints. The X-Service-Token is resolved from environment (kernel sets
-it on worker boot); ctx.http handles transport, retry, timeout, and the
-audit chokepoint hooks per the federal contract.
-
+endpoints (X-Service-Token from env; ctx.http owns transport/retry/audit).
 The platform event catalog is published by the kernel into Redis under
-``imperal:automation:event_catalog``; we read it through ``ctx.cache``
-(``EventCatalog`` Pydantic model) so consumers get typed access with
-TTL-managed refresh.
+``imperal:automation:event_catalog`` and read through ``ctx.cache`` as the
+typed ``EventCatalog`` model with TTL-managed refresh.
 """
 from __future__ import annotations
 
@@ -24,6 +20,7 @@ from constants import (
     USER_ROLE_CACHE_KEY,
     USER_ROLE_CACHE_TTL_SECONDS,
 )
+from capability_paging import _CAP_PAGE_MAX_BYTES, _paginate_capabilities  # noqa: F401 (re-export for tests)
 from models import (
     EventCatalog, CatalogEntry, UserRoleSnapshot,
     CapabilityCatalog, CapabilityEntry, CapabilityPageIndex,
@@ -232,12 +229,10 @@ async def load_capability_catalog_cached(ctx) -> CapabilityCatalog:
             if e.get("tool")
         ])
 
-    # PAGED cache (live 2026-07-12): the whole-platform catalog outgrew the
-    # single 64KB cache entry (83,460 bytes > I-CACHE-VALUE-SIZE-CAP-64KB) and
-    # the oversized WRITE raised out of get_or_fetch — blanking the catalog
-    # every turn. Pages each stay comfortably under the cap, and ANY cache
-    # failure (read or write) degrades to the fresh fetch: caching is an
-    # optimization, never the correctness path.
+    # PAGED cache (live 2026-07-12): the catalog outgrew the 64KB cache entry
+    # and the oversized WRITE raised out of get_or_fetch, blanking the catalog
+    # every turn. Pages stay under the cap; ANY cache failure degrades to the
+    # fresh fetch — caching is an optimization, never the correctness path.
     try:
         idx = await ctx.cache.get(f"{CAPABILITY_CACHE_KEY}:idx", CapabilityPageIndex)
         if idx and idx.pages > 0:
@@ -270,31 +265,6 @@ async def load_capability_catalog_cached(ctx) -> CapabilityCatalog:
         log.warning("capability cache write skipped (serving uncached): %s", exc)
 
     return catalog
-
-
-# Page payload budget — comfortably under the 64KB envelope cap so the
-# serialized page + envelope wrapper never trips the SDK size guard.
-_CAP_PAGE_MAX_BYTES = 45_000
-
-
-def _paginate_capabilities(entries: list, max_bytes: int) -> list[list]:
-    """Greedy LOSSLESS split of catalog entries into pages whose serialized
-    size stays under ``max_bytes``. Always at least one page; a single
-    pathological entry larger than the budget still ships alone (the SDK
-    guard is the final authority for that page)."""
-    pages: list[list] = []
-    cur: list = []
-    cur_bytes = 0
-    for e in entries:
-        size = len(e.model_dump_json().encode("utf-8")) + 1
-        if cur and cur_bytes + size > max_bytes:
-            pages.append(cur)
-            cur, cur_bytes = [], 0
-        cur.append(e)
-        cur_bytes += size
-    if cur:
-        pages.append(cur)
-    return pages or [[]]
 
 
 # ─── Authoritative user role (workaround for kernel ctx.user.role drift) ── #
