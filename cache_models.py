@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from app import ext
 from models import (
-    CapabilityCatalog, CapabilityPageIndex, EventCatalog, UserRoleSnapshot,
+    CapabilityCatalog, CapabilityPageIndex, EventCatalog, EventCatalogPageIndex,
+    UserRoleSnapshot,
 )
 
 # Register cache models DIRECTLY (not subclasses) so the SDK
@@ -25,3 +26,6 @@ ext.cache_model("capability_catalog")(CapabilityCatalog)
 # (api.py, live 2026-07-12). It shipped unregistered -> the :idx write raised
 # -> every read fell back to a fresh fetch (cache effectively dead).
 ext.cache_model("capability_page_index")(CapabilityPageIndex)
+# EventCatalogPageIndex is the :idx entry of the PAGED event-catalog cache
+# (live 2026-07-13: the event catalog outgrew 64KB just like capabilities).
+ext.cache_model("event_catalog_page_index")(EventCatalogPageIndex)

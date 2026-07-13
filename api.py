@@ -22,7 +22,7 @@ from constants import (
 )
 from capability_paging import _CAP_PAGE_MAX_BYTES, _paginate_capabilities  # noqa: F401 (re-export for tests)
 from models import (
-    EventCatalog, CatalogEntry, UserRoleSnapshot,
+    EventCatalog, EventCatalogPageIndex, CatalogEntry, UserRoleSnapshot,
     CapabilityCatalog, CapabilityEntry, CapabilityPageIndex,
 )
 
@@ -175,12 +175,43 @@ async def load_event_catalog_cached(ctx) -> EventCatalog:
             if e.get("event_type")
         ])
 
-    return await ctx.cache.get_or_fetch(
-        key=CATALOG_CACHE_KEY,
-        model=EventCatalog,
-        fetcher=_fetch,
-        ttl_seconds=CATALOG_CACHE_TTL_SECONDS,
-    )
+    # PAGED cache (live 2026-07-13): the event catalog outgrew the 64KB cache
+    # entry too (86,870 bytes / 326 events) and get_or_fetch raised out of the
+    # WRITE after a successful fetch — blanking available_events every skeleton
+    # refresh. Same pattern as the capability catalog below: pages stay under
+    # the cap; ANY cache failure degrades to the fresh fetch.
+    try:
+        idx = await ctx.cache.get(f"{CATALOG_CACHE_KEY}:idx", EventCatalogPageIndex)
+        if idx and idx.pages > 0:
+            pages = []
+            for i in range(idx.pages):
+                page = await ctx.cache.get(f"{CATALOG_CACHE_KEY}:p{i}", EventCatalog)
+                if page is None:          # expired/partial -> refetch fresh
+                    pages = None
+                    break
+                pages.append(page)
+            if pages is not None:
+                return EventCatalog(
+                    entries=[e for pg in pages for e in pg.entries])
+    except Exception as exc:
+        log.warning("event catalog cache read skipped: %s", exc)
+
+    catalog = await _fetch()
+
+    try:
+        page_lists = _paginate_capabilities(catalog.entries, _CAP_PAGE_MAX_BYTES)
+        for i, page_entries in enumerate(page_lists):
+            await ctx.cache.set(f"{CATALOG_CACHE_KEY}:p{i}",
+                                EventCatalog(entries=page_entries),
+                                ttl_seconds=CATALOG_CACHE_TTL_SECONDS)
+        # Index goes LAST so readers never see it point at missing pages.
+        await ctx.cache.set(f"{CATALOG_CACHE_KEY}:idx",
+                            EventCatalogPageIndex(pages=len(page_lists)),
+                            ttl_seconds=CATALOG_CACHE_TTL_SECONDS)
+    except Exception as exc:
+        log.warning("event catalog cache write skipped (serving uncached): %s", exc)
+
+    return catalog
 
 
 # ─── Capability catalog (Redis-published by platform) ─────────────────── #

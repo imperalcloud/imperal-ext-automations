@@ -247,6 +247,15 @@ class CapabilityPageIndex(BaseModel):
     pages: int = 0
 
 
+class EventCatalogPageIndex(BaseModel):
+    """Page count for the PAGED event-catalog cache (live 2026-07-13: the
+    event catalog outgrew the 64KB entry too — 86,870 bytes / 326 events —
+    and get_or_fetch raised out of the WRITE after a successful fetch,
+    blanking available_events every skeleton refresh). Pages live under
+    `{CATALOG_CACHE_KEY}:p{i}`; this index under `{CATALOG_CACHE_KEY}:idx`."""
+    pages: int = 0
+
+
 class UserRoleSnapshot(BaseModel):
     """Authoritative user role from auth-gw, cached via ctx.cache.
 
