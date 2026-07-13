@@ -41,6 +41,18 @@ def test_sidebar_has_inline_editor_and_notifications_copy():
     assert "update_automation" in src
 
 
+def test_sidebar_empty_state_opens_workshop_not_canned_prompt():
+    """The empty-state button must open the Workshop creator, never ui.Send a
+    canned chat prompt: 'Create an automation that runs every morning at 9 AM'
+    produced a meaningless no-action rule that fired every morning into
+    nothing (2026-07-13)."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(here, "panels.py")) as f:
+        src = f.read()
+    assert "ui.Send(" not in src
+    assert "Create your first automation" in src
+
+
 def test_workshop_has_edit_form_fields():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     with open(os.path.join(here, "panels_center.py")) as f:

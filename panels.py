@@ -71,15 +71,17 @@ async def automations_sidebar(ctx, **kwargs):
     if not rules:
         # Explicit Button (don't rely on Empty.action — frontend renders that
         # as a generic 'Try again' label which doesn't match our intent).
+        # Opens the Workshop creator via the same __panel__workshop route the
+        # editor buttons use. NEVER ui.Send a canned "create an automation…"
+        # chat prompt here — that created a meaningless no-action rule that
+        # fired every morning into nothing (2026-07-13).
         children.append(ui.Stack([
             ui.Empty(message="No automation rules yet", icon="Bot"),
             ui.Button(
                 "Create your first automation",
                 icon="Plus",
                 variant="primary",
-                on_click=ui.Send(
-                    "Create an automation that runs every morning at 9 AM",
-                ),
+                on_click=ui.Call("__panel__workshop", __center_opened=True),
             ),
         ], gap=2))
     else:
