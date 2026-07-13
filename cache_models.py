@@ -7,7 +7,9 @@ is called for the first time.
 from __future__ import annotations
 
 from app import ext
-from models import EventCatalog, UserRoleSnapshot, CapabilityCatalog
+from models import (
+    CapabilityCatalog, CapabilityPageIndex, EventCatalog, UserRoleSnapshot,
+)
 
 # Register cache models DIRECTLY (not subclasses) so the SDK
 # reverse-lookup in ctx.cache.get_or_fetch matches by class identity.
@@ -19,3 +21,7 @@ ext.cache_model("user_role")(UserRoleSnapshot)
 # -> every skeleton refresh raised "CapabilityCatalog is not registered" and
 # available_tools silently fell back to empty. Register it like the others.
 ext.cache_model("capability_catalog")(CapabilityCatalog)
+# CapabilityPageIndex is the :idx entry of the PAGED capability cache
+# (api.py, live 2026-07-12). It shipped unregistered -> the :idx write raised
+# -> every read fell back to a fresh fetch (cache effectively dead).
+ext.cache_model("capability_page_index")(CapabilityPageIndex)
