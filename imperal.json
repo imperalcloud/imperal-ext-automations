@@ -7,7 +7,7 @@
   "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
   "icon": "icon.svg",
   "actions_explicit": true,
-  "system": false,
+  "system": true,
   "capabilities": [
     "automations:read",
     "automations:write",

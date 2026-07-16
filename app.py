@@ -23,6 +23,13 @@ SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.txt").read_text()
 ext = Extension(
     "automations",
     version="1.9.6",
+    system=True,  # Imperal-owned platform app (mirrors admin/marketplace) —
+    # first-party, hidden from Marketplace search, auto-installed for every
+    # user. Was missing here (same latent gap found+fixed on developer-ext
+    # and billing-ext, 2026-07-16) even though developer_apps.system was
+    # hand-seeded to 1 in the DB; deploy_app now self-heals `system` FROM
+    # this manifest field on every deploy, so without this declaration the
+    # next automations deploy would have silently flipped the DB flag to 0.
     capabilities=[
         # Rule CRUD
         "automations:read", "automations:write", "automations:delete",
