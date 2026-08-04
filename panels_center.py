@@ -165,11 +165,16 @@ def _create_form(catalog):
 
 def _edit_form(catalog, rule: dict):
     trigger_filter = rule.get("trigger_filter") or {}
+    # rule_id rides in via `defaults`, NOT a ui.Hidden child: there is no
+    # ui.Hidden primitive in the SDK (see imperal_sdk.ui.Password's docstring
+    # and extensions/developer, which carries app_id/name the same way).
+    # Referencing it raised AttributeError while BUILDING this form, so
+    # "Open Editor" rendered nothing at all -- an empty center panel.
     form = ui.Form(
         action="update_automation",
         submit_label="Save changes",
+        defaults={"rule_id": str(rule.get("id", ""))},
         children=[
-            ui.Hidden(param_name="rule_id", value=str(rule.get("id", ""))),
             ui.Markdown("**Trigger event**"),
             ui.Select(
                 param_name="event_type",
@@ -177,9 +182,9 @@ def _edit_form(catalog, rule: dict):
                 options=_event_options(catalog),
                 value=trigger_filter.get("event_type", ""),
             ),
+            ui.Markdown("**What should happen**"),
             ui.TextArea(
                 param_name="action_description",
-                label="What should happen",
                 placeholder="Describe the action in plain language.",
                 rows=4,
                 value=_edit_action_description(rule),
