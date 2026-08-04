@@ -22,6 +22,7 @@ from api import (
     load_event_catalog_cached,
     fetch_user_role_cached,
 )
+from action_text import describe_actions
 from constants import (
     PROMPT_TRUNCATE_LEN,
     EVENT_DESC_TRUNCATE_LEN,
@@ -230,9 +231,13 @@ def _edit_action_description(rule: dict) -> str:
     interpretation = (rule.get("interpretation") or "").strip()
     if interpretation:
         return interpretation
-    actions = rule.get("actions") or []
-    if actions and isinstance(actions[0], dict):
-        return (actions[0].get("message") or prompt).strip()
+    # A STRUCTURED action ({app_id, tool, args}) has no "message" key, so the
+    # old `actions[0].get("message")` read rendered an empty editor field for
+    # every grounded rule. describe_actions renders both shapes -- and for an
+    # SSH rule it shows the exact server + command the owner pre-authorized.
+    described = describe_actions(rule.get("actions") or [])
+    if described:
+        return described
     return prompt
 
 

@@ -18,10 +18,17 @@ from constants import DEFAULT_COOLDOWN_SECONDS
 
 class StructuredAction(BaseModel):
     """WS2 grounded action — the resolved (app_id, tool, args) the rule runs.
-    Optional on create: when present the GW persists it instead of free text."""
-    app_id: str = Field(description="Extension that owns the tool, from the user's live scope")
+    Optional on create: when present the GW persists it instead of free text.
+
+    For `conn-ssh` (the user's own servers) this is more than an optimisation:
+    the stored action IS the pre-authorization. A write-tier server tool
+    (run_command / write_file / edit_file) runs unattended ONLY through a stored
+    action, because then the command is the literal one the user approved and
+    can re-read in the panel. Described in words instead, it cannot run.
+    """
+    app_id: str = Field(description="Extension that owns the tool, from the user's live scope (or 'conn-ssh' for the user's servers)")
     tool: str = Field(description="@chat.function name the user can actually invoke")
-    args: dict = Field(default_factory=dict, description="Well-formed args for the tool")
+    args: dict = Field(default_factory=dict, description="Well-formed args for the tool (conn-ssh: connection_id + e.g. command)")
 
 
 class CreateAutomationParams(BaseModel):

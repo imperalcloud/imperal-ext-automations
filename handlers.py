@@ -21,6 +21,7 @@ from api import (
     fetch_user_role_cached,
     get_quota,
 )
+from action_text import validate_ssh_action
 from constants import ACTION_DESC_TRUNCATE_LEN, PROMPT_TRUNCATE_LEN
 from models import (
     AutomationRule,
@@ -199,6 +200,15 @@ async def fn_create_automation(ctx, params: CreateAutomationParams) -> ActionRes
             return ActionResult.error(f"Invalid cron '{params.schedule}': {exc}")
 
     if params.action is not None:
+        # Validate a server action AT AUTHORING TIME. Without this a rule with a
+        # missing server or command saves happily and only fails on its first
+        # real run -- possibly at 07:00 next morning, far from the cause. The
+        # message names the missing field so it can be fixed in one step.
+        _ssh_err = validate_ssh_action(
+            params.action.app_id, params.action.tool, params.action.args
+        )
+        if _ssh_err:
+            return ActionResult.error(_ssh_err, retryable=True)
         actions = [{
             "app_id": params.action.app_id,
             "tool":   params.action.tool,
@@ -297,6 +307,13 @@ async def fn_update_automation(ctx, params: UpdateAutomationParams) -> ActionRes
     if params.action is not None:
         # Structured (grounded) edit — GW PATCH re-grounds it (tool exists,
         # in scope, required args present) before persisting. Mirrors create.
+        # Same authoring-time server check as create: an edit must never be able
+        # to turn a working rule into one that only fails at run time.
+        _ssh_err = validate_ssh_action(
+            params.action.app_id, params.action.tool, params.action.args
+        )
+        if _ssh_err:
+            return ActionResult.error(_ssh_err, retryable=True)
         patch["actions"] = [{
             "app_id": params.action.app_id,
             "tool":   params.action.tool,

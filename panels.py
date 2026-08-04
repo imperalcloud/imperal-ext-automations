@@ -6,6 +6,8 @@ from datetime import datetime
 
 from imperal_sdk import ui
 
+from action_text import describe_actions, is_ssh_action
+
 from app import ext
 from api import list_active_rules, fetch_user_role_cached
 from constants import (
@@ -108,17 +110,27 @@ def _rule_trigger_summary(rule: dict) -> str:
 
 def _rule_action_preview(rule: dict):
     actions = rule.get("actions") or []
+    # ONE human-readable line first (describe_actions handles free-text AND
+    # structured shapes, and spells out the server + command for an SSH rule --
+    # that stored pair IS the owner's pre-authorization, so it must be legible
+    # at a glance, not printed as a raw args dict).
+    described = describe_actions(actions)
     if actions and isinstance(actions[0], dict):
         action = actions[0]
         if action.get("tool"):
             app_id = action.get("app_id") or "app"
             tool = action.get("tool") or "tool"
-            return ui.KeyValue([
-                {"key": "Action", "value": f"{app_id}.{tool}"},
-                {"key": "Args", "value": str(action.get("args") or {})},
-            ], columns=1)
-        if action.get("message"):
-            return ui.Markdown(f"**Action**\n\n{action.get('message')}")
+            rows = [{"key": "Action", "value": described or f"{app_id}.{tool}"}]
+            if is_ssh_action(action):
+                args = action.get("args") if isinstance(action.get("args"), dict) else {}
+                target = str((args or {}).get("connection_id") or "").strip()
+                rows.append({"key": "Server", "value": target or "not set"})
+                rows.append({"key": "Runs as", "value": "pre-authorized by this rule"})
+            else:
+                rows.append({"key": "Tool", "value": f"{app_id}.{tool}"})
+            return ui.KeyValue(rows, columns=1)
+        if described:
+            return ui.Markdown(f"**Action**\n\n{described}")
     interpretation = (rule.get("interpretation") or "").strip()
     if interpretation:
         return ui.Markdown(f"**Action**\n\n{interpretation}")
