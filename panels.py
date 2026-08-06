@@ -69,8 +69,28 @@ def _health_of(rule: dict) -> tuple:
         return ("paused", "yellow")
     if bad and not ok:
         return ("failing", "red")
-    if bad and ok and (rule.get("last_error") or "").strip():
-        return ("unstable", "yellow")
+
+    # PARTIAL runs are the trap. A run where step 1 dies and step 2 succeeds
+    # finishes as "partial", which increments success_count and leaves
+    # fail_count AND last_failure_at untouched -- only last_error is written.
+    # Judging by the counters alone therefore painted rule 999778 a calm green
+    # "healthy" while it had been failing its real work every hour for 15
+    # hours. So a lingering last_error counts as evidence on its own.
+    #
+    # It is only treated as STALE (and ignored) when the record actually
+    # proves recovery: a logged failure with a later success after it. When
+    # there is no last_failure_at to compare against -- the partial case --
+    # nothing proves recovery, so the rule is reported unstable rather than
+    # flattered.
+    err = (rule.get("last_error") or "").strip()
+    if err:
+        fail_at = (rule.get("last_failure_at") or "").strip() if isinstance(
+            rule.get("last_failure_at"), str) else ""
+        succ_at = (rule.get("last_success_at") or "").strip() if isinstance(
+            rule.get("last_success_at"), str) else ""
+        recovered = bool(fail_at and succ_at and succ_at > fail_at)
+        if not recovered:
+            return ("unstable", "yellow")
     if ok:
         return ("healthy", "green")
     return ("not run yet", "blue")
