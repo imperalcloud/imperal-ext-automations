@@ -283,6 +283,10 @@ class AutomationRule(sdl.Entity, sdl.Prioritized, sdl.WorkflowState):
     cooldown_seconds: int = sdl.field(default=0, role="automations.cooldown_seconds")
     created_at: str = sdl.field(default="", role="automations.created_at")
     user_id: str = sdl.field(default="", role="automations.user_id")
+    # Safe, ready-made owner caption ("you" or the imperal_id) so the owner
+    # never has to be inferred from an email living in the rule's own text.
+    owner_label: str = ""
+    owner_is_caller: bool = False
     notify_mode: str = sdl.field(default="all", role="automations.notify_mode")
     trigger_filter: dict = Field(default_factory=dict)
     actions: list[dict] = Field(default_factory=list)

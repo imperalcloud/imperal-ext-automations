@@ -402,3 +402,62 @@ async def test_mine_with_no_rules_is_an_empty_list_not_an_error(gw, monkeypatch)
     assert res.status == "success"
     assert res.data["items"] == []
     assert res.data["caller_user_id"] == "imp_u_nobody00000"
+
+
+# ─── owner identity must never be an email ────────────────────────────── #
+#
+# Reported from the panel: the owner column showed an unknown "@" identity
+# that then vanished. Emails are redacted to a placeholder before display and
+# the panel's HTML swallows the angle brackets, leaving a blank. The rules'
+# own text legitimately CONTAINS emails (rule 44 replies to one), so the fix
+# is to hand the narrator a ready-made owner caption it never has to invent.
+
+@pytest.mark.asyncio
+async def test_owner_label_is_an_imperal_id_never_an_email(gw, monkeypatch):
+    async def _admin(ctx):
+        return True
+    monkeypatch.setattr(h, "_is_admin", _admin)
+
+    res = await h.fn_list_automations(_Ctx(ALICE), h.ListAutomationsParams())
+    assert res.status == "success"
+    for it in res.data["items"]:
+        label = it["owner_label"]
+        assert "@" not in label, f"owner_label must never be an email: {label!r}"
+        assert label == "you" or label.startswith("imp_u_"), label
+        # caller's own rules read as "you", never as a raw id echoed back
+        assert (label == "you") == it["owner_is_caller"]
+
+
+@pytest.mark.asyncio
+async def test_rule_text_may_contain_an_email_without_it_becoming_the_owner(gw, monkeypatch):
+    """A rule that emails somebody must not borrow that address as its owner."""
+    async def _admin(ctx):
+        return True
+    monkeypatch.setattr(h, "_is_admin", _admin)
+
+    emailish = {
+        "id": 44, "user_id": ALICE,
+        "prompt": "When I receive an email from someone@example.com, reply",
+        "status": "paused", "trigger_count": 24, "success_count": 6,
+        "fail_count": 0, "last_error": None, "created_at": "2026-04-08T03:50:41Z",
+        "trigger_filter": {"event_type": "email.received",
+                           "conditions": {"from_contains": "someone@example.com"}},
+        "actions": [{"message": "reply to someone@example.com"}],
+    }
+    gw["rules"].append(emailish)
+
+    res = await h.fn_list_automations(_Ctx(ALICE), h.ListAutomationsParams(mine=True))
+    row = next(i for i in res.data["items"] if i["rule_id"] == 44)
+    assert row["owner_label"] == "you"
+    assert row["user_id"] == ALICE
+    # the email survives where it BELONGS -- in the rule's own content
+    assert "someone@example.com" in str(row["trigger_filter"])
+
+
+def test_rule_entity_keeps_every_detail_field():
+    """Guard against silently dropping fields when editing the model."""
+    from models import AutomationRule
+    for field in ("user_id", "owner_label", "owner_is_caller", "notify_mode",
+                  "trigger_filter", "actions", "interpretation",
+                  "last_triggered", "created_at", "last_error"):
+        assert field in AutomationRule.model_fields, f"lost field: {field}"

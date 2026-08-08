@@ -22,7 +22,7 @@ SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.txt").read_text()
 
 ext = Extension(
     "automations",
-    version="1.10.1",
+    version="1.10.2",
     system=True,  # Imperal-owned platform app (mirrors admin/marketplace) —
     # first-party, hidden from Marketplace search, auto-installed for every
     # user. Was missing here (same latent gap found+fixed on developer-ext

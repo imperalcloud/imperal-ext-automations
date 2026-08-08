@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.13",
   "app_id": "automations",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "name": "AI Cloud Agents",
   "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
   "icon": "icon.svg",
@@ -351,6 +351,16 @@
                 "title": "User Id",
                 "type": "string",
                 "x-sdl-role": "automations.user_id"
+              },
+              "owner_label": {
+                "default": "",
+                "title": "Owner Label",
+                "type": "string"
+              },
+              "owner_is_caller": {
+                "default": false,
+                "title": "Owner Is Caller",
+                "type": "boolean"
               },
               "notify_mode": {
                 "default": "all",
@@ -725,6 +735,16 @@
             "title": "User Id",
             "type": "string",
             "x-sdl-role": "automations.user_id"
+          },
+          "owner_label": {
+            "default": "",
+            "title": "Owner Label",
+            "type": "string"
+          },
+          "owner_is_caller": {
+            "default": false,
+            "title": "Owner Is Caller",
+            "type": "boolean"
           },
           "notify_mode": {
             "default": "all",

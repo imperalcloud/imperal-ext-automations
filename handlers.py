@@ -346,6 +346,13 @@ async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResul
     items = [_rule_summary(r) for r in rules]
     for it in items:
         it["owner_is_caller"] = it.get("user_id") == user_id
+        # A ready-made, safe way to name the owner. Without it the narrator
+        # invents a label -- and the tempting source is an email sitting in the
+        # rule's own prompt/conditions, which belongs to what the rule DOES,
+        # not to who owns it. Such an email is then redacted to a placeholder
+        # and swallowed by the panel's HTML, leaving a blank where an owner
+        # should be. An imperal_id survives verbatim, so hand one over.
+        it["owner_label"] = "you" if it["owner_is_caller"] else (it.get("user_id") or "unknown")
     owners = {it.get("user_id", "") for it in items}
 
     subject = "You have" if (params.mine or not is_admin) else "System has"
