@@ -200,3 +200,130 @@ def test_the_sweep_actually_inspects_something():
     calls = list(_ui_calls())
     assert len(calls) > 20, f"only {len(calls)} ui.* calls found -- sweep looks broken"
     assert {c[0] for c in calls} >= {"panels.py", "panels_center.py"}
+
+
+# --------------------------------------------------------------------------
+# The sidebar must never outgrow the kernel's reply cap
+# --------------------------------------------------------------------------
+#
+# The left panel "just disappeared" for admins. Nothing threw and every test
+# here stayed green, because the panel BUILT perfectly -- it was simply too
+# big. The kernel caps a fast-RPC reply at 256KB
+# (REPLY_PAYLOAD_MAX_BYTES, imperal_kernel/rpc/stream_consumer.py) and an
+# oversize reply is not trimmed: it is REPLACED by a typed error carrying no
+# ui at all. The panel host then marks the slot missing and renders nothing
+# for it -- not even a spinner -- so the whole left panel vanishes.
+#
+# An admin sees every rule in the tenant and a list item costs ~3.5KB on the
+# wire, so the sidebar crossed the cap at ~70 rules. These tests pin the
+# invariant at rule counts far past that.
+
+REPLY_CAP_BYTES = 256 * 1024
+
+_LONG_RU = (
+    "Каждый час проверить доступность и валидность файла "
+    "/opt/whm-ha-cloud/fleet-status.txt на узлах nl-node1 и sg-node3. "
+    "Если хотя бы один источник доступен и валиден, не формировать и не "
+    "отправлять OK-отчёт. Если оба источника недоступны или невалидны, "
+    "сформировать CRITICAL отчёт с точным текстом «оба источника "
+    "fleet-status недоступны/невалидны»."
+)
+
+
+def _bulk_rule(i: int) -> dict:
+    """A rule shaped like the heaviest ones really in production: a long
+    natural-language prompt and no structured action to summarise."""
+    failing = i % 4 == 0
+    return {
+        "id": 900000 + i,
+        "rule_id": 900000 + i,
+        "user_id": f"imp_u_owner{i % 7}",
+        "status": "active",
+        "prompt": "When system.scheduled: " + _LONG_RU,
+        "interpretation": _LONG_RU,
+        "actions": [{"app_id": None, "tool": None, "args": {}, "message": _LONG_RU}],
+        "trigger_filter": {"event_type": "system.scheduled", "schedule": "0 * * * *"},
+        "schedule": "0 * * * *",
+        "cooldown_seconds": 60,
+        "notify_mode": "all",
+        "trigger_count": 10,
+        "success_count": 0 if failing else 10,
+        "fail_count": 10 if failing else 0,
+        "last_error": "connection_not_found" if failing else None,
+        "last_triggered": "2026-08-08T10:00:00Z",
+        "created_at": "2026-08-01T10:00:00Z",
+        "lifetime_cost_usd": 0.0123,
+        "lifetime_tokens": 19500,
+    }
+
+
+def _render_sidebar_as_admin(monkeypatch, rules):
+    """Build the sidebar the way the kernel does, with the gateway stubbed."""
+    async def _rules(ctx, tenant_id="default"):
+        return rules
+
+    async def _role(ctx):
+        return "admin"          # the case that broke: admins see EVERY rule
+
+    monkeypatch.setattr(panels, "list_active_rules", _rules)
+    monkeypatch.setattr(panels, "fetch_user_role_cached", _role)
+
+    from imperal_sdk.testing import MockContext
+    import asyncio
+    node = asyncio.run(
+        panels.automations_sidebar(MockContext(user_id="imp_u_admin", tenant_id="default"))
+    )
+    return node, json.dumps(node.to_dict(), ensure_ascii=False).encode("utf-8")
+
+
+@pytest.mark.parametrize("count", [0, 1, 57, 71, 200, 500])
+def test_sidebar_reply_stays_under_the_kernel_cap(monkeypatch, count):
+    """At ANY rule count the reply must fit, or the panel disappears."""
+    _, payload = _render_sidebar_as_admin(monkeypatch, [_bulk_rule(i) for i in range(count)])
+    assert len(payload) < REPLY_CAP_BYTES, (
+        f"{count} rules -> {len(payload) / 1024:.1f}KB exceeds the "
+        f"{REPLY_CAP_BYTES / 1024:.0f}KB reply cap; the left panel would vanish"
+    )
+
+
+def test_sidebar_keeps_failing_rules_when_it_has_to_truncate(monkeypatch):
+    """Truncation must never cost the admin a broken rule.
+
+    Rules needing attention are rendered first, so anything dropped for the
+    byte budget is healthy -- never failing.
+    """
+    rules = [_bulk_rule(i) for i in range(300)]
+    failing_ids = {r["id"] for r in rules if r["fail_count"]}
+
+    node, payload = _render_sidebar_as_admin(monkeypatch, rules)
+    rendered = payload.decode("utf-8")
+
+    shown_failing = sum(1 for rid in failing_ids if f'"{rid}"' in rendered)
+    assert shown_failing > 0, "truncation dropped every failing rule"
+
+    # Whatever is rendered must be attention-first: no healthy rule may be
+    # shown while a failing one was dropped.
+    healthy_ids = {r["id"] for r in rules if not r["fail_count"]}
+    shown_healthy = sum(1 for rid in healthy_ids if f'"{rid}"' in rendered)
+    if shown_healthy:
+        assert shown_failing == len(failing_ids) or shown_healthy == 0, (
+            "healthy rules rendered while failing rules were truncated away"
+        )
+
+
+def test_sidebar_says_so_when_rules_are_hidden(monkeypatch):
+    """Silently dropping rules would be a lie; the panel must admit it."""
+    node, payload = _render_sidebar_as_admin(monkeypatch, [_bulk_rule(i) for i in range(300)])
+    rendered = payload.decode("utf-8")
+    assert "not shown" in rendered, "hidden rules are not disclosed in the panel"
+    assert "Rules (" in rendered
+
+
+def test_sidebar_shows_every_rule_when_they_all_fit(monkeypatch):
+    """The budget must not truncate a normal-sized account."""
+    rules = [_bulk_rule(i) for i in range(12)]
+    node, payload = _render_sidebar_as_admin(monkeypatch, rules)
+    rendered = payload.decode("utf-8")
+    for r in rules:
+        assert f'"{r["id"]}"' in rendered, f"rule {r['id']} missing though all 12 fit"
+    assert "not shown" not in rendered

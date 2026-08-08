@@ -10,6 +10,22 @@ OWNER_PREFIX_LEN         = 16   # Truncated user_id shown to admins
 # Skeleton shape
 SKELETON_RULE_LIMIT = 5  # Max rules summarized in skeleton.rules_summary
 
+# Sidebar reply budget — I7.
+#
+# The kernel caps a fast-RPC reply at 256KB (REPLY_PAYLOAD_MAX_BYTES in
+# imperal_kernel/rpc/stream_consumer.py). Over that, the reply is not
+# trimmed: _publish_reply REPLACES it with a typed APPLICATION error
+# ("reply truncated: payload exceeds 256KB cap"), so the panel returns NO
+# ui at all. The frontend then marks the slot missing and renders nothing
+# for it -- not even a spinner (ExtensionPage: `configHasLeft && !missing.left`)
+# -- so the left panel simply DISAPPEARS.
+#
+# An admin sees every rule in the tenant, and a rule list item costs ~3.5KB
+# on the wire, so the sidebar crossed the cap at ~70 rules and vanished.
+# This budget bounds the rendered list so the reply stays well inside the
+# cap at ANY rule count; the remainder is reported honestly in the panel.
+SIDEBAR_ITEM_BUDGET_BYTES = 170_000
+
 # Rule defaults (mirrored on Auth GW side, here for Pydantic Field defaults)
 DEFAULT_COOLDOWN_SECONDS = 60
 

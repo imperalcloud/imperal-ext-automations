@@ -1,6 +1,7 @@
 """Automations · Sidebar panel (left slot) — rule list with inline management."""
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 
@@ -13,6 +14,7 @@ from api import list_active_rules, fetch_user_role_cached
 from constants import (
     OWNER_PREFIX_LEN,
     PROMPT_TRUNCATE_LEN,
+    SIDEBAR_ITEM_BUDGET_BYTES,
 )
 
 log = logging.getLogger("automations")
@@ -186,9 +188,49 @@ async def automations_sidebar(ctx, **kwargs):
             ),
         ], gap=2))
     else:
-        items = [_rule_list_item(r, is_admin=is_admin, viewer_id=user_id) for r in rules]
-        children.append(ui.Divider(f"Rules ({total})"))
+        # Budget-bounded rendering — I7 (see SIDEBAR_ITEM_BUDGET_BYTES).
+        #
+        # An admin sees EVERY rule in the tenant. Past ~70 rules the reply
+        # crossed the kernel's 256KB cap, the kernel replaced it with a typed
+        # error carrying no ui, and the whole left panel disappeared. So the
+        # list is filled against a byte budget instead of blindly.
+        #
+        # Ordering matters: rules that need attention are rendered FIRST, so
+        # if anything is dropped it is healthy rules -- never a failing one.
+        def _attention_first(r: dict) -> tuple:
+            health = _health_of(r)[0]
+            rank = {"failing": 0, "unstable": 1}.get(health, 3)
+            if r.get("status") == "error":
+                rank = 0
+            return (rank, str(r.get("rule_id") or r.get("id") or ""))
+
+        items: list = []
+        used = 0
+        shown = 0
+        for r in sorted(rules, key=_attention_first):
+            item = _rule_list_item(r, is_admin=is_admin, viewer_id=user_id)
+            try:
+                cost = len(json.dumps(item.to_dict(), ensure_ascii=False).encode("utf-8"))
+            except (TypeError, ValueError):
+                cost = 4_000  # unmeasurable node: assume a typical item
+            if items and used + cost > SIDEBAR_ITEM_BUDGET_BYTES:
+                break
+            items.append(item)
+            used += cost
+            shown += 1
+
+        hidden = total - shown
+        children.append(ui.Divider(
+            f"Rules ({total})" if not hidden else f"Rules ({shown} of {total})"))
         children.append(ui.List(items=items, searchable=True))
+        if hidden > 0:
+            # Say it plainly rather than silently dropping rules. Attention-
+            # needing rules are sorted first, so what is hidden is healthy.
+            children.append(ui.Markdown(
+                f"_{hidden} more rule{'s' if hidden != 1 else ''} not shown here "
+                f"(panel size limit). Everything needing attention is listed "
+                f"above; open the Workshop for the full list._"
+            ))
 
     # Auto-trigger center overlay (Workshop) on first sidebar mount.
     # Frontend usePanelDiscovery's isCenterOverlay allowlist routes
