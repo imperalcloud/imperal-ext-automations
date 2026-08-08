@@ -26,6 +26,29 @@ SKELETON_RULE_LIMIT = 5  # Max rules summarized in skeleton.rules_summary
 # cap at ANY rule count; the remainder is reported honestly in the panel.
 SIDEBAR_ITEM_BUDGET_BYTES = 170_000
 
+# Cap on the event-type dropdown in the workshop — I7.
+#
+# Measured live on production: the catalog had 667 events and rendered ONE
+# Select of 127.6KB -- 90% of the whole workshop reply (141.7KB), with the
+# rule table costing only 11.5KB. At ~196B per option the panel would have
+# hit the kernel's 256KB cap at ~1264 events and vanished exactly the way
+# the sidebar did.
+#
+# Unlike rule counts, this grows with how many APPS are installed platform-
+# wide, so it climbs on its own without the user doing anything. A 667-entry
+# dropdown is also unusable by hand -- this is a usability bound first and a
+# size bound second. Users can still target any event by describing it in
+# words; the rule prompt is the real interface.
+EVENT_OPTIONS_MAX = 150
+
+# Cap on the workshop's outcomes table — I7.
+#
+# A row is cheap (~650B) but unbounded is still unbounded: the table shares
+# one reply with the event dropdown and the rule editor, and the table alone
+# breached the 256KB cap at ~1000 rules. Failing rules are rendered first, so
+# the cap only ever costs healthy rows -- the ones this table is not for.
+OUTCOME_ROWS_MAX = 200
+
 # Rule defaults (mirrored on Auth GW side, here for Pydantic Field defaults)
 DEFAULT_COOLDOWN_SECONDS = 60
 

@@ -27,6 +27,8 @@ from constants import (
     PROMPT_TRUNCATE_LEN,
     EVENT_DESC_TRUNCATE_LEN,
     DEFAULT_COOLDOWN_SECONDS,
+    EVENT_OPTIONS_MAX,
+    OUTCOME_ROWS_MAX,
 )
 
 log = logging.getLogger("automations")
@@ -99,14 +101,43 @@ def _stats_strip(rules: list[dict]):
 
 
 def _event_options(catalog):
+    """Build the trigger-event dropdown, capped at EVENT_OPTIONS_MAX — I7.
+
+    The catalog grows with every app installed platform-wide (667 events in
+    production), and each option costs ~196B on the wire. Unbounded, this one
+    Select was 90% of the workshop reply and would have pushed it past the
+    kernel's 256KB cap -- at which point the reply is replaced by an error
+    with no ui and the whole panel disappears.
+
+    Common triggers are listed FIRST so the cap costs only exotic events, and
+    anything omitted is still fully usable: the rule prompt takes an event in
+    words, and create_automation accepts any event_type the catalog knows.
+    """
     if catalog and catalog.entries:
-        return [
+        def rank(e) -> tuple:
+            et = e.event_type or ""
+            # Schedules and mail are what rules are actually built on; keep
+            # them visible no matter how large the catalog grows.
+            head = 0 if et.startswith(("system.", "email.")) else 1
+            return (head, et)
+
+        entries = sorted(catalog.entries, key=rank)[:EVENT_OPTIONS_MAX]
+        options = [
             {
                 "value": e.event_type,
                 "label": f"{e.event_type} — {e.description[:EVENT_DESC_TRUNCATE_LEN]}".rstrip(" —"),
             }
-            for e in catalog.entries
+            for e in entries
         ]
+        hidden = len(catalog.entries) - len(entries)
+        if hidden > 0:
+            # Never imply the list is everything: name the remainder and the
+            # way to reach it, rather than dropping it silently.
+            options.append({
+                "value": "",
+                "label": f"… {hidden} more events — describe the trigger in the prompt instead",
+            })
+        return options
     return [
         {"value": "system.scheduled", "label": "system.scheduled — cron timer"},
         {"value": "email.received", "label": "email.received — every incoming mail"},
@@ -252,6 +283,19 @@ def _outcomes_table(rules: list[dict]):
             message="No execution data yet — rules trigger as their events fire.",
             icon="History",
         )
+    # Bounded — I7. A row is small (~650B) but unbounded is still unbounded,
+    # and this table shares the reply with the event dropdown and the editor.
+    # Failing rules are listed FIRST: this table exists to show what went
+    # wrong, so a row that fell off the end must never be a broken rule.
+    def _worst_first(r: dict) -> tuple:
+        try:
+            bad = int(r.get("fail_count") or 0)
+        except (TypeError, ValueError):
+            bad = 0
+        broken = 0 if (r.get("status") == "error" or bad or r.get("last_error")) else 1
+        return (broken, -bad, str(r.get("id") or r.get("rule_id") or ""))
+
+    ordered = sorted(rules, key=_worst_first)[:OUTCOME_ROWS_MAX]
     rows = [
         {
             "rule": (r.get("prompt") or "")[:PROMPT_TRUNCATE_LEN],
@@ -261,7 +305,7 @@ def _outcomes_table(rules: list[dict]):
             "fail": str(r.get("fail_count", 0)),
             "last_err": (r.get("last_error") or "")[:60],
         }
-        for r in rules
+        for r in ordered
     ]
     return ui.DataTable(
         columns=[

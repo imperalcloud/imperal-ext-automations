@@ -327,3 +327,123 @@ def test_sidebar_shows_every_rule_when_they_all_fit(monkeypatch):
     for r in rules:
         assert f'"{r["id"]}"' in rendered, f"rule {r['id']} missing though all 12 fit"
     assert "not shown" not in rendered
+
+
+# --------------------------------------------------------------------------
+# The workshop must never outgrow the kernel's reply cap either
+# --------------------------------------------------------------------------
+#
+# Measured live on production while fixing the sidebar: the workshop reply
+# was 141.7KB -- 55% of the cap -- and 127.6KB of that was ONE Select
+# holding 667 event options (~196B each). The rule table was only 11.5KB.
+#
+# That dropdown grows with how many APPS are installed platform-wide, not
+# with anything the user does, so it climbs on its own: at ~1264 events the
+# workshop would have crossed the cap and vanished exactly like the sidebar.
+# A 667-entry dropdown is also unusable by hand.
+#
+# Nothing omitted is lost: create_automation validates against the FULL
+# catalog (handlers.py: catalog.valid_event_types), so any hidden event is
+# still creatable by prompt or tool call -- only the visual list is bounded.
+
+def _catalog(n: int):
+    """A catalog shaped like production's: mostly app events, some system."""
+    from types import SimpleNamespace
+    return SimpleNamespace(entries=[
+        SimpleNamespace(
+            event_type=(f"system.event_{i}" if i % 20 == 0 else f"app{i % 40}.thing_{i}"),
+            description=f"Fires when thing {i} happens and the payload carries the details")
+        for i in range(n)
+    ])
+
+
+def _bulk_center_rule(i: int, failing: bool = False) -> dict:
+    return {
+        "id": 900000 + i, "rule_id": 900000 + i, "user_id": "imp_u_x",
+        "status": "error" if failing else "active",
+        "prompt": "When system.scheduled: " + _LONG_RU,
+        "interpretation": _LONG_RU,
+        "actions": [{"app_id": None, "tool": None, "args": {}, "message": _LONG_RU}],
+        "trigger_filter": {"event_type": "system.scheduled", "schedule": "0 * * * *"},
+        "schedule": "0 * * * *", "cooldown_seconds": 60, "notify_mode": "all",
+        "trigger_count": 10,
+        "success_count": 0 if failing else 10,
+        "fail_count": 10 if failing else 0,
+        "last_error": "connection_not_found" if failing else None,
+        "last_triggered": "2026-08-08T10:00:00Z", "created_at": "2026-08-01T10:00:00Z",
+    }
+
+
+def _render_workshop(monkeypatch, rules, catalog_size):
+    import asyncio
+
+    import panels_center as pc
+    from imperal_sdk.testing import MockContext
+
+    async def _rules(ctx, tenant_id="default"):
+        return rules
+
+    async def _role(ctx):
+        return "admin"
+
+    async def _cat(ctx):
+        return _catalog(catalog_size)
+
+    monkeypatch.setattr(pc, "list_active_rules", _rules)
+    monkeypatch.setattr(pc, "fetch_user_role_cached", _role)
+    monkeypatch.setattr(pc, "load_event_catalog_cached", _cat)
+    node = asyncio.run(pc.automations_workshop(
+        MockContext(user_id="imp_u_tE-J9c_NxX", tenant_id="default")))
+    return node, json.dumps(node.to_dict(), ensure_ascii=False).encode("utf-8")
+
+
+@pytest.mark.parametrize("rules_n,catalog_n", [(57, 667), (500, 667), (5000, 5000)])
+def test_workshop_reply_stays_under_the_kernel_cap(monkeypatch, rules_n, catalog_n):
+    """No rule count and no catalog size may push the workshop over the cap."""
+    _, payload = _render_workshop(
+        monkeypatch, [_bulk_center_rule(i) for i in range(rules_n)], catalog_n)
+    assert len(payload) < REPLY_CAP_BYTES, (
+        f"{rules_n} rules + {catalog_n} events render to "
+        f"{len(payload)/1024:.1f}KB, over the cap -- the workshop would disappear")
+
+
+def test_the_event_dropdown_is_bounded_and_discloses_the_rest():
+    """667 real events cost 127.6KB unbounded -- 90% of the whole reply."""
+    import panels_center as pc
+    opts = pc._event_options(_catalog(667))
+    assert len(opts) <= pc.EVENT_OPTIONS_MAX + 1, "dropdown is not bounded"
+    size = len(json.dumps(
+        pc.ui.Select(param_name="event_type", options=opts).to_dict(),
+        ensure_ascii=False).encode("utf-8"))
+    assert size < 40 * 1024, f"event dropdown still costs {size/1024:.1f}KB"
+    assert any("more events" in o["label"] for o in opts), \
+        "omitted events are not disclosed"
+
+
+def test_a_small_catalog_is_never_truncated():
+    """Most installs are small -- they must be completely unaffected."""
+    import panels_center as pc
+    opts = pc._event_options(_catalog(40))
+    assert len(opts) == 40
+    assert not any("more events" in o["label"] for o in opts)
+
+
+def test_common_triggers_survive_a_huge_catalog():
+    """system.* / email.* are what rules are actually built on."""
+    import panels_center as pc
+    opts = pc._event_options(_catalog(5_000))
+    values = [o["value"] for o in opts if o["value"]]
+    assert any(v.startswith("system.") for v in values), \
+        "schedule triggers were truncated away -- the most used trigger of all"
+
+
+def test_failing_rules_survive_the_outcomes_table_cap():
+    """The table exists to show what BROKE; a dropped row must never be a
+    broken rule, however many healthy ones come before it."""
+    import panels_center as pc
+    rules = [_bulk_center_rule(i) for i in range(1_000)]
+    rules += [_bulk_center_rule(9001, failing=True), _bulk_center_rule(9002, failing=True)]
+    table = pc._outcomes_table(rules)
+    body = json.dumps(table.to_dict(), ensure_ascii=False)
+    assert body.count("connection_not_found") == 2, \
+        "a failing rule fell off the end of the outcomes table"
