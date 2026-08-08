@@ -120,7 +120,9 @@ def test_rule_summary_exposes_trigger_schedule_and_health():
     assert s["is_scheduled"] is True
     assert s["success_rate"] == 0.833
     assert s["never_triggered"] is False
-    assert "conn-ssh.run_command" in s["action_summary"]
+    # action_summary is the SAME human sentence the panel renders
+    # (shared via action_text.describe_actions), not a raw app.tool pair.
+    assert "run_command" in s["action_summary"]
 
 
 def test_never_triggered_and_failing_are_derived():

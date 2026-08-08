@@ -771,10 +771,10 @@
       "params_schema": {
         "$defs": {
           "StructuredAction": {
-            "description": "WS2 grounded action — the resolved (app_id, tool, args) the rule runs.\nOptional on create: when present the GW persists it instead of free text.",
+            "description": "WS2 grounded action — the resolved (app_id, tool, args) the rule runs.\nOptional on create: when present the GW persists it instead of free text.\n\nFor `conn-ssh` (the user's own servers) this is more than an optimisation:\nthe stored action IS the pre-authorization. A write-tier server tool\n(run_command / write_file / edit_file) runs unattended ONLY through a stored\naction, because then the command is the literal one the user approved and\ncan re-read in the panel. Described in words instead, it cannot run.",
             "properties": {
               "app_id": {
-                "description": "Extension that owns the tool, from the user's live scope",
+                "description": "Extension that owns the tool, from the user's live scope (or 'conn-ssh' for the user's servers)",
                 "title": "App Id",
                 "type": "string"
               },
@@ -785,7 +785,7 @@
               },
               "args": {
                 "additionalProperties": true,
-                "description": "Well-formed args for the tool",
+                "description": "Well-formed args for the tool (conn-ssh: connection_id + e.g. command)",
                 "title": "Args",
                 "type": "object"
               }
@@ -990,10 +990,10 @@
       "params_schema": {
         "$defs": {
           "StructuredAction": {
-            "description": "WS2 grounded action — the resolved (app_id, tool, args) the rule runs.\nOptional on create: when present the GW persists it instead of free text.",
+            "description": "WS2 grounded action — the resolved (app_id, tool, args) the rule runs.\nOptional on create: when present the GW persists it instead of free text.\n\nFor `conn-ssh` (the user's own servers) this is more than an optimisation:\nthe stored action IS the pre-authorization. A write-tier server tool\n(run_command / write_file / edit_file) runs unattended ONLY through a stored\naction, because then the command is the literal one the user approved and\ncan re-read in the panel. Described in words instead, it cannot run.",
             "properties": {
               "app_id": {
-                "description": "Extension that owns the tool, from the user's live scope",
+                "description": "Extension that owns the tool, from the user's live scope (or 'conn-ssh' for the user's servers)",
                 "title": "App Id",
                 "type": "string"
               },
@@ -1004,7 +1004,7 @@
               },
               "args": {
                 "additionalProperties": true,
-                "description": "Well-formed args for the tool",
+                "description": "Well-formed args for the tool (conn-ssh: connection_id + e.g. command)",
                 "title": "Args",
                 "type": "object"
               }

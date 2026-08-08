@@ -21,7 +21,7 @@ from api import (
     fetch_user_role_cached,
     get_quota,
 )
-from action_text import validate_ssh_action
+from action_text import describe_actions, validate_ssh_action
 from constants import ACTION_DESC_TRUNCATE_LEN, PROMPT_TRUNCATE_LEN
 from models import (
     AutomationRule,
@@ -173,7 +173,11 @@ def _rule_summary(r: dict) -> dict:
         "is_failing":       bool(last_error) or fails > 0,
         "success_rate":     round(successes / triggers, 3) if triggers else 0.0,
         "age_days":         _age_days(r.get("created_at", "")),
-        "action_summary":   _action_text(r)[:ACTION_DESC_TRUNCATE_LEN],
+        # Human-readable rendering is shared with the panel via
+        # describe_actions(), so the summary a caller reads here is the SAME
+        # sentence the UI shows. _action_text() stays the flattened blob used
+        # for SEARCHING, which is a different job.
+        "action_summary":   describe_actions(r.get("actions"))[:ACTION_DESC_TRUNCATE_LEN],
     }
 
 
