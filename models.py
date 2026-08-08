@@ -66,10 +66,71 @@ class RuleIdParams(BaseModel):
 
 
 class ListAutomationsParams(BaseModel):
-    """Filter for listing automation rules."""
+    """Filter for listing automation rules.
+
+    Every filter is optional and they COMBINE (logical AND). Admins may
+    additionally scope by owner; for non-admins the owner filters are
+    ignored (they only ever see their own rules).
+    """
     status: str | None = Field(
         default=None,
         description="Optional filter: 'active', 'paused', or 'error'. Omit for all.",
+    )
+    user_id: str = Field(
+        default="",
+        description=(
+            "ADMIN ONLY — show rules belonging to this owner. Accepts a full "
+            "imperal_id (imp_u_...) or a fragment of it. Use when asked "
+            "'which automations belong to <user>'."
+        ),
+    )
+    event_type: str = Field(
+        default="",
+        description=(
+            "Filter by trigger event, e.g. 'system.scheduled', 'email.received'. "
+            "Substring match, so 'email' matches every email.* trigger."
+        ),
+    )
+    search: str = Field(
+        default="",
+        description=(
+            "Free-text search across prompt, interpretation, action text and "
+            "last_error (case-insensitive)."
+        ),
+    )
+    scheduled_only: bool = Field(
+        default=False,
+        description="Only cron/scheduled rules (those carrying a cron schedule).",
+    )
+    failing_only: bool = Field(
+        default=False,
+        description="Only rules that currently carry a last_error or have failures.",
+    )
+    never_triggered: bool = Field(
+        default=False,
+        description=(
+            "Only rules that have NEVER fired (trigger_count=0). Useful for "
+            "spotting dead or orphaned automations."
+        ),
+    )
+    created_after: str = Field(
+        default="",
+        description="Only rules created at/after this ISO date, e.g. '2026-08-01'.",
+    )
+    created_before: str = Field(
+        default="",
+        description="Only rules created at/before this ISO date, e.g. '2026-08-31'.",
+    )
+    sort: str = Field(
+        default="",
+        description=(
+            "Sort order: 'newest' (default), 'oldest', 'most_triggered', "
+            "'most_failed', 'owner'."
+        ),
+    )
+    limit: int = Field(
+        default=200,
+        description="Max rules to return (1-500). Applied AFTER filtering and sorting.",
     )
 
 
@@ -88,6 +149,87 @@ class UpdateAutomationParams(BaseModel):
     notify_mode: str | None = Field(
         default=None,
         description="Change run notifications (bell + chat): 'all' / 'failures' / 'off'. Omit to keep current.",
+    )
+
+
+class RuleDetailsParams(BaseModel):
+    """Target one rule for a full, nothing-held-back detail read."""
+    rule_id: int = Field(description="The rule ID")
+    include_schedule_health: bool = Field(
+        default=True,
+        description=(
+            "Also report derived health: whether the rule is a cron rule, "
+            "whether it has ever fired, its success ratio and failure state."
+        ),
+    )
+
+
+class BulkRuleParams(BaseModel):
+    """Apply one lifecycle operation to SEVERAL rules in a single call.
+
+    Either pass explicit ``rule_ids``, or select rules with the same
+    filters ``list_automations`` accepts. Selection filters are the safe
+    way to act on 'every failing rule of user X' without enumerating ids
+    by hand. Admins may target other users' rules; non-admins are always
+    confined to their own.
+    """
+    rule_ids: list[int] = Field(
+        default_factory=list,
+        description="Explicit rule IDs to act on. Omit to select by filter instead.",
+    )
+    operation: str = Field(
+        description="What to do: 'pause', 'resume', or 'delete'.",
+    )
+    user_id: str = Field(
+        default="",
+        description="ADMIN ONLY — restrict the selection to this owner (id or fragment).",
+    )
+    status: str = Field(
+        default="",
+        description="Restrict selection to rules in this status ('active'/'paused'/'error').",
+    )
+    event_type: str = Field(
+        default="",
+        description="Restrict selection to this trigger event (substring match).",
+    )
+    search: str = Field(
+        default="",
+        description="Restrict selection to rules whose text matches this term.",
+    )
+    never_triggered: bool = Field(
+        default=False,
+        description="Restrict selection to rules that have never fired.",
+    )
+    failing_only: bool = Field(
+        default=False,
+        description="Restrict selection to rules that currently carry a failure.",
+    )
+    dry_run: bool = Field(
+        default=True,
+        description=(
+            "Preview only — report exactly which rules WOULD be affected and "
+            "change nothing. Defaults to TRUE: a bulk lifecycle operation "
+            "never fires by accident. Set false (with confirm=true) to apply."
+        ),
+    )
+    confirm: bool = Field(
+        default=False,
+        description=(
+            "Required for 'delete'. Without it a delete is refused and only "
+            "reports what WOULD be deleted (safe dry run)."
+        ),
+    )
+
+
+class OwnerStatsParams(BaseModel):
+    """Group every automation rule by owner (admin oversight)."""
+    user_id: str = Field(
+        default="",
+        description="Optional — report on a single owner (id or fragment) instead of all.",
+    )
+    include_rule_ids: bool = Field(
+        default=True,
+        description="Include each owner's rule IDs in the breakdown.",
     )
 
 
@@ -169,7 +311,68 @@ class AutomationListResponse(sdl.EntityList[AutomationRule]):
     EntityList so the existing scalars survive verbatim for the narrator.
     """
     admin_view: bool = False
+    total_matched: int = 0
+    truncated: bool = False
     filter: dict = Field(default_factory=dict)
+
+
+class BulkActionReceipt(sdl.Entity):
+    """Receipt for ``bulk_automation_action`` — what was selected, what
+    actually happened, and what failed, per rule id.
+
+    Field names mirror the handler's return dict verbatim
+    (I-EXT-RECORD-FIELD-NAMING-SYMMETRIC).
+    """
+    operation: str = ""
+    selected: int = 0
+    succeeded: list[int] = Field(default_factory=list)
+    failed: list[dict] = Field(default_factory=list)
+    dry_run: bool = False
+    admin_view: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sdl_canon(cls, data):
+        if isinstance(data, dict):
+            op = data.get("operation") or "bulk"
+            data.setdefault("id", op)
+            n = data.get("selected", 0)
+            data.setdefault("title", f"{op}: {n} rule(s)")
+            data.setdefault("kind", "receipt")
+        return data
+
+
+class OwnerRuleStats(sdl.Entity):
+    """Per-owner automation statistics (admin oversight)."""
+    user_id: str = sdl.field(default="", role="automations.user_id")
+    total: int = 0
+    active: int = 0
+    paused: int = 0
+    failing: int = 0
+    never_triggered: int = 0
+    scheduled: int = 0
+    total_runs: int = 0
+    total_failures: int = 0
+    first_created: str = ""
+    last_created: str = ""
+    rule_ids: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sdl_canon(cls, data):
+        if isinstance(data, dict):
+            uid = data.get("user_id") or ""
+            data.setdefault("id", uid)
+            data.setdefault("title", uid or "(unknown owner)")
+            data.setdefault("kind", "owner")
+        return data
+
+
+class OwnerStatsResponse(sdl.EntityList[OwnerRuleStats]):
+    """``automation_owners`` return shape — one row per owner."""
+    total_owners: int = 0
+    total_rules: int = 0
+    admin_view: bool = False
 
 
 class AutomationActionReceipt(sdl.Entity):
