@@ -294,6 +294,16 @@ async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResul
     # and a confusing empty result at worst.
     owner_filter = params.user_id.strip() if is_admin else ""
 
+    # "Show MY automations" must never depend on the caller knowing its own
+    # imperal_id. An admin sees the whole tenant by default, so answering
+    # that question used to require guessing which rows were the caller's --
+    # and a wrong guess either hides real rules or attributes someone else's.
+    # mine=True takes the identity straight from the authenticated session,
+    # which cannot be spoofed, and overrides any owner filter.
+    if params.mine:
+        owner_filter = user_id
+        scope_note = ""
+
     rules = [
         r for r in rules
         if _matches_filters(
@@ -320,6 +330,7 @@ async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResul
     applied = {
         k: v for k, v in {
             "status":          params.status,
+            "mine":            params.mine or None,
             "user_id":         owner_filter,
             "event_type":      params.event_type.strip(),
             "search":          params.search.strip(),
@@ -337,7 +348,7 @@ async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResul
         it["owner_is_caller"] = it.get("user_id") == user_id
     owners = {it.get("user_id", "") for it in items}
 
-    subject = "System has" if is_admin else "You have"
+    subject = "You have" if (params.mine or not is_admin) else "System has"
     detail = []
     if applied:
         detail.append("filtered")
@@ -361,6 +372,11 @@ async def fn_list_automations(ctx, params: ListAutomationsParams) -> ActionResul
             "total_matched": total_matched,
             "truncated":     total_matched > len(items),
             "admin_view":    is_admin,
+            # The caller's OWN id, straight from the authenticated session.
+            # Returning it means "which of these are mine" is answerable from
+            # the data itself -- no guessing, and no inventing an id-resolution
+            # problem when a filter legitimately matches nothing.
+            "caller_user_id": user_id,
             "filter":        applied,
         },
         summary=summary,

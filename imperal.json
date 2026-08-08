@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.13",
   "app_id": "automations",
-  "version": "1.10.0",
+  "version": "1.10.1",
   "name": "AI Cloud Agents",
   "description": "Event-driven automation rules — subscribe to platform events (email arrivals, schedule ticks, custom signals) and run multi-step actions across other extensions when conditions match.",
   "icon": "icon.svg",
@@ -50,9 +50,15 @@
             "description": "Optional filter: 'active', 'paused', or 'error'. Omit for all.",
             "title": "Status"
           },
+          "mine": {
+            "default": false,
+            "description": "Show ONLY the calling user's own rules. Set this whenever the user says 'my automations' / 'мои автоматизации' / 'the ones I created'. The owner id is taken from the authenticated session, so it is always correct — NEVER try to guess the caller's imperal_id and pass it via user_id instead. Admins included: an admin asking for THEIR rules wants this, not the whole tenant.",
+            "title": "Mine",
+            "type": "boolean"
+          },
           "user_id": {
             "default": "",
-            "description": "ADMIN ONLY — show rules belonging to this owner. Accepts a full imperal_id (imp_u_...) or a fragment of it. Use when asked 'which automations belong to <user>'.",
+            "description": "ADMIN ONLY — show rules belonging to SOMEBODY ELSE. Accepts a full imperal_id (imp_u_...) or a fragment of it. Use when asked 'which automations belong to <user>'. For the caller's OWN rules use mine=true instead.",
             "title": "User Id",
             "type": "string"
           },
@@ -427,6 +433,11 @@
             "default": false,
             "title": "Admin View",
             "type": "boolean"
+          },
+          "caller_user_id": {
+            "default": "",
+            "title": "Caller User Id",
+            "type": "string"
           },
           "total_matched": {
             "default": 0,

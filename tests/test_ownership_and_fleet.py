@@ -317,3 +317,88 @@ async def test_bulk_rejects_unknown_operation(gw, monkeypatch):
     )
     assert res.status == "error"
     assert "pause" in res.error
+
+
+# ─── "show me MY automations" (the production regression) ─────────────── #
+#
+# An admin sees the whole tenant by default. Asking for THEIR OWN rules used
+# to require the caller to know its own imperal_id and pass it as user_id --
+# so a wrong guess either hid real rules or blamed a non-existent "identifier
+# resolution problem". mine=True takes the id from the session instead.
+
+@pytest.mark.asyncio
+async def test_admin_asking_for_mine_gets_only_their_own(gw, monkeypatch):
+    """The exact panel question: admin asks for 'my automations'."""
+    async def _admin(ctx):
+        return True
+    monkeypatch.setattr(h, "_is_admin", _admin)
+
+    ctx = _Ctx(ALICE)
+    res = await h.fn_list_automations(ctx, h.ListAutomationsParams(mine=True))
+    assert res.status == "success"
+    owners = {i["user_id"] for i in res.data["items"]}
+    assert owners == {ALICE}, "mine=True must never return another user's rules"
+    assert all(i["owner_is_caller"] for i in res.data["items"])
+    # ...and it says "You have", not "System has".
+    assert res.summary.startswith("You have")
+
+
+@pytest.mark.asyncio
+async def test_admin_without_mine_still_sees_the_whole_tenant(gw, monkeypatch):
+    """mine=True must NARROW the view, not become the new default."""
+    async def _admin(ctx):
+        return True
+    monkeypatch.setattr(h, "_is_admin", _admin)
+
+    ctx = _Ctx(ALICE)
+    res = await h.fn_list_automations(ctx, h.ListAutomationsParams())
+    owners = {i["user_id"] for i in res.data["items"]}
+    assert len(owners) > 1, "admin default view is the whole tenant"
+    assert res.data["admin_view"] is True
+
+
+@pytest.mark.asyncio
+async def test_response_carries_the_caller_id_so_nobody_has_to_guess(gw, monkeypatch):
+    """caller_user_id is what removes the guessing from 'which are mine'."""
+    async def _admin(ctx):
+        return True
+    monkeypatch.setattr(h, "_is_admin", _admin)
+
+    ctx = _Ctx(BOB)
+    res = await h.fn_list_automations(ctx, h.ListAutomationsParams())
+    assert res.data["caller_user_id"] == BOB
+    mine = [i for i in res.data["items"] if i["owner_is_caller"]]
+    assert {i["user_id"] for i in mine} == {BOB}
+
+
+@pytest.mark.asyncio
+async def test_mine_beats_a_wrongly_guessed_user_id(gw, monkeypatch):
+    """If the model still guesses an id, mine=True must win over it."""
+    async def _admin(ctx):
+        return True
+    monkeypatch.setattr(h, "_is_admin", _admin)
+
+    ctx = _Ctx(ALICE)
+    res = await h.fn_list_automations(
+        ctx, h.ListAutomationsParams(mine=True, user_id=BOB)
+    )
+    owners = {i["user_id"] for i in res.data["items"]}
+    assert owners == {ALICE}, "session identity must override a guessed id"
+
+
+@pytest.mark.asyncio
+async def test_mine_with_no_rules_is_an_empty_list_not_an_error(gw, monkeypatch):
+    """A caller with zero rules gets an honest empty answer.
+
+    This is the other half of the production failure: an empty result must
+    read as 'you have none', never as a broken id mapping.
+    """
+    async def _admin(ctx):
+        return True
+    monkeypatch.setattr(h, "_is_admin", _admin)
+
+    ctx = _Ctx("imp_u_nobody00000")
+    res = await h.fn_list_automations(ctx, h.ListAutomationsParams(mine=True))
+    assert res.status == "success"
+    assert res.data["items"] == []
+    assert res.data["caller_user_id"] == "imp_u_nobody00000"

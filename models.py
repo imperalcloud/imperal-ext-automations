@@ -76,12 +76,24 @@ class ListAutomationsParams(BaseModel):
         default=None,
         description="Optional filter: 'active', 'paused', or 'error'. Omit for all.",
     )
+    mine: bool = Field(
+        default=False,
+        description=(
+            "Show ONLY the calling user's own rules. Set this whenever the "
+            "user says 'my automations' / 'мои автоматизации' / 'the ones I "
+            "created'. The owner id is taken from the authenticated session, "
+            "so it is always correct — NEVER try to guess the caller's "
+            "imperal_id and pass it via user_id instead. Admins included: an "
+            "admin asking for THEIR rules wants this, not the whole tenant."
+        ),
+    )
     user_id: str = Field(
         default="",
         description=(
-            "ADMIN ONLY — show rules belonging to this owner. Accepts a full "
-            "imperal_id (imp_u_...) or a fragment of it. Use when asked "
-            "'which automations belong to <user>'."
+            "ADMIN ONLY — show rules belonging to SOMEBODY ELSE. Accepts a "
+            "full imperal_id (imp_u_...) or a fragment of it. Use when asked "
+            "'which automations belong to <user>'. For the caller's OWN rules "
+            "use mine=true instead."
         ),
     )
     event_type: str = Field(
@@ -311,6 +323,7 @@ class AutomationListResponse(sdl.EntityList[AutomationRule]):
     EntityList so the existing scalars survive verbatim for the narrator.
     """
     admin_view: bool = False
+    caller_user_id: str = ""
     total_matched: int = 0
     truncated: bool = False
     filter: dict = Field(default_factory=dict)
