@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "5.9.13",
+  "sdk_version": "5.11.0",
   "app_id": "automations",
   "version": "1.10.4",
   "name": "AI Cloud Agents",
@@ -2210,6 +2210,15 @@
       "signature": "(ctx) -> 'None'"
     }
   },
+  "tray": [
+    {
+      "tray_id": "active",
+      "icon": "Bot",
+      "tooltip": "AI Cloud Agents",
+      "zone": "status",
+      "order": 20
+    }
+  ],
   "panels": [
     {
       "panel_id": "sidebar",

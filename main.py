@@ -17,7 +17,7 @@ if _dir not in sys.path:
 _MODULES = (
     "app", "api", "constants", "models",
     "cache_models",
-    "handlers", "skeleton", "panels", "panels_center",
+    "handlers", "skeleton", "tray", "panels", "panels_center",
 )
 for _m in [k for k in sys.modules if k in _MODULES]:
     del sys.modules[_m]
@@ -30,5 +30,6 @@ import cache_models              # noqa: E402, F401
 
 import handlers                  # noqa: E402, F401
 import skeleton                  # noqa: E402, F401
+import tray                      # noqa: E402, F401  # system tray item
 import panels                    # noqa: E402, F401  # left slot
 import panels_center             # noqa: E402, F401  # center slot
