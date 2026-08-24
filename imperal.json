@@ -2218,7 +2218,7 @@
       "zone": "status",
       "order": 20,
       "badge_style": "inline",
-      "icon_color": "muted"
+      "icon_color": "primary"
     }
   ],
   "panels": [

@@ -42,11 +42,16 @@ log = logging.getLogger("automations")
     # the built-in drew it next to the bot glyph. Same shape, now declared
     # through the contract instead of hardcoded in the Panel.
     badge_style="inline",
-    # RESTING colour. The built-in bot was muted while nothing was armed, so
-    # this is what the item looks like before its handler has said anything --
-    # including on the very first frame of a page load. The live answer below
-    # turns it green when agents actually are armed.
-    icon_color="muted",
+    # RESTING colour. The built-in bot was NOT muted while nothing was armed:
+    # it was violet, always, whatever the count. Declaring "muted" here put
+    # the glyph out on every load where no agents happen to be running, and
+    # `muted` is dimmer than the strip's own ink rather than equal to it.
+    #
+    # `primary` is the closest the semantic vocabulary comes to that violet
+    # (the token set has no purple, and inventing one for a single item would
+    # put this app outside the theme the moment the theme changes). Names,
+    # never hex -- so it follows the user's theme instead of fighting it.
+    icon_color="primary",
 )
 async def tray_active_rules(ctx, **kwargs) -> ui.UINode:
     """Green when automations are armed, grey when none are.
@@ -76,10 +81,10 @@ async def tray_active_rules(ctx, **kwargs) -> ui.UINode:
     # which is exactly the kind of private handshake this contract replaces.
     return ui.TrayResponse(
         badge=ui.Badge(value=active, color="green" if active > 0 else "gray"),
-        # The GLYPH follows the same state as the number. This is what the
-        # hardcoded built-in did for free and what a manifest alone can never
-        # do: only this handler, having just counted, knows whether anything
-        # is armed. Without it the bot stayed one flat colour and the strip
-        # lost the at-a-glance signal it used to carry.
-        icon_color="success" if active > 0 else "muted",
+        # The GLYPH follows the same state as the number: green while agents
+        # are armed, and back to its resting violet-ish `primary` when none
+        # are -- NOT muted. Going muted is what made the strip turn
+        # black-and-white for anyone with no automations running, which is a
+        # perfectly ordinary state and not one worth greying the icon for.
+        icon_color="success" if active > 0 else "primary",
     )
