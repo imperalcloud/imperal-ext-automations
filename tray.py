@@ -38,6 +38,15 @@ log = logging.getLogger("automations")
     # identical after the move. A tray that reshuffles itself when an app is
     # re-implemented would be a regression the user can see.
     order=20,
+    # How many agents are armed is a figure the user READS at a glance, and
+    # the built-in drew it next to the bot glyph. Same shape, now declared
+    # through the contract instead of hardcoded in the Panel.
+    badge_style="inline",
+    # RESTING colour. The built-in bot was muted while nothing was armed, so
+    # this is what the item looks like before its handler has said anything --
+    # including on the very first frame of a page load. The live answer below
+    # turns it green when agents actually are armed.
+    icon_color="muted",
 )
 async def tray_active_rules(ctx, **kwargs) -> ui.UINode:
     """Green when automations are armed, grey when none are.
@@ -67,4 +76,10 @@ async def tray_active_rules(ctx, **kwargs) -> ui.UINode:
     # which is exactly the kind of private handshake this contract replaces.
     return ui.TrayResponse(
         badge=ui.Badge(value=active, color="green" if active > 0 else "gray"),
+        # The GLYPH follows the same state as the number. This is what the
+        # hardcoded built-in did for free and what a manifest alone can never
+        # do: only this handler, having just counted, knows whether anything
+        # is armed. Without it the bot stayed one flat colour and the strip
+        # lost the at-a-glance signal it used to carry.
+        icon_color="success" if active > 0 else "muted",
     )
