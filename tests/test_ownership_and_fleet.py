@@ -130,6 +130,34 @@ def test_never_triggered_and_failing_are_derived():
     assert h._rule_summary(RULES[2])["is_failing"] is True
 
 
+def test_a_lifetime_failure_does_not_mark_a_healthy_rule_as_failing():
+    """`is_failing` is about NOW, not about ever.
+
+    Observed 2026-08-25 on rule 999997: 366 successes, one failure the previous
+    evening, last_error empty, most recent run green -- and the chat view still
+    reported `is_failing: true`, because the old expression was
+    `bool(last_error) or fail_count > 0` over a LIFETIME counter. Every rule
+    that ever hiccuped was branded broken forever, so the flag carried no
+    information and a genuinely broken rule could not be told apart from a
+    healthy one.
+
+    RULES[0] is exactly that shape: 10 successes, 2 old failures, no live
+    error. It is healthy.
+    """
+    assert h._rule_summary(RULES[0])["is_failing"] is False
+
+
+def test_an_unrecovered_error_still_counts_as_failing():
+    """The other half: a live last_error is never explained away.
+
+    RULES[2] carries "smtp timeout" with no later success proving recovery --
+    the partial-run trap that painted rule 999778 a calm green for 15 hours.
+    It must stay flagged, so the fix above cannot decay into "trust the
+    counters".
+    """
+    assert h._rule_summary(RULES[2])["is_failing"] is True
+
+
 @pytest.mark.asyncio
 async def test_admin_can_read_another_users_rule(gw, monkeypatch):
     """The bug that blocked auditing: admin reads Bob's rule by id."""
@@ -192,7 +220,12 @@ async def test_non_admin_is_confined_to_own_rules(gw, monkeypatch):
     (dict(search="backup"),             {203}),
     (dict(search="run_command"),        {101}),
     (dict(scheduled_only=True),         {101, 203}),
-    (dict(failing_only=True),           {101, 203}),
+    # 101 has 2 failures somewhere in its LIFETIME, 10 successes and an EMPTY
+    # last_error -- it is not failing NOW, so it is no longer listed. 203
+    # carries a live unrecovered last_error ("smtp timeout"). This expectation
+    # used to be {101, 203}, which pinned the very bug being fixed: one
+    # failure back in July branded a rule broken forever.
+    (dict(failing_only=True),           {203}),
     (dict(never_triggered=True),        {102}),
     (dict(status="paused"),             {102}),
     (dict(created_after="2026-08-01"),  {101, 102}),

@@ -22,6 +22,7 @@ from api import (
     get_quota,
 )
 from action_text import describe_actions, validate_ssh_action
+from health import is_failing
 from constants import ACTION_DESC_TRUNCATE_LEN, PROMPT_TRUNCATE_LEN
 from models import (
     AutomationRule,
@@ -170,7 +171,11 @@ def _rule_summary(r: dict) -> dict:
         "schedule":         cron,
         "is_scheduled":     bool(cron),
         "never_triggered":  triggers == 0,
-        "is_failing":       bool(last_error) or fails > 0,
+        # NOT `fails > 0`: that is a LIFETIME counter, so one failure back in
+        # July marked a rule broken forever -- rule 999997 reported failing
+        # with 366 successes and a green last run. health.is_failing judges
+        # the CURRENT state, and is the same function the panel renders from.
+        "is_failing":       is_failing(r),
         "success_rate":     round(successes / triggers, 3) if triggers else 0.0,
         "age_days":         _age_days(r.get("created_at", "")),
         # Human-readable rendering is shared with the panel via
@@ -228,7 +233,11 @@ def _matches_filters(
         return False
     if scheduled_only and not _cron_of(r):
         return False
-    if failing_only and not (r.get("last_error") or (r.get("fail_count") or 0) > 0):
+    # Same lifetime-counter trap as the old is_failing: `fail_count > 0` made
+    # this filter list rules whose last 300 runs were clean. It now asks the
+    # SAME question the view and the panel ask, so "show me failing rules"
+    # cannot disagree with the badge the user sees next to them.
+    if failing_only and not is_failing(r):
         return False
     if never_triggered and (r.get("trigger_count") or 0) != 0:
         return False

@@ -8,6 +8,7 @@ from datetime import datetime
 from imperal_sdk import ui
 
 from action_text import describe_actions, is_ssh_action
+from health import health_of
 
 from app import ext
 from api import list_active_rules, fetch_user_role_cached
@@ -51,51 +52,11 @@ def _format_tokens(n: int) -> str:
     return f"{n/1_000_000:.1f}M".replace(".0M", "M")
 
 
-def _health_of(rule: dict) -> tuple:
-    """Reduce a rule to ONE honest health signal: (label, colour).
-
-    The old list showed status alone, so a rule that was 'active' but had
-    failed its last 40 runs looked identical to one working perfectly. What
-    a user actually needs to know at a glance is 'is this thing WORKING',
-    which is status AND recent outcome together.
-    """
-    status = rule.get("status", "unknown")
-    try:
-        ok = int(rule.get("success_count") or 0)
-        bad = int(rule.get("fail_count") or 0)
-    except (TypeError, ValueError):
-        ok = bad = 0
-    if status == "error":
-        return ("error", "red")
-    if status == "paused":
-        return ("paused", "yellow")
-    if bad and not ok:
-        return ("failing", "red")
-
-    # PARTIAL runs are the trap. A run where step 1 dies and step 2 succeeds
-    # finishes as "partial", which increments success_count and leaves
-    # fail_count AND last_failure_at untouched -- only last_error is written.
-    # Judging by the counters alone therefore painted rule 999778 a calm green
-    # "healthy" while it had been failing its real work every hour for 15
-    # hours. So a lingering last_error counts as evidence on its own.
-    #
-    # It is only treated as STALE (and ignored) when the record actually
-    # proves recovery: a logged failure with a later success after it. When
-    # there is no last_failure_at to compare against -- the partial case --
-    # nothing proves recovery, so the rule is reported unstable rather than
-    # flattered.
-    err = (rule.get("last_error") or "").strip()
-    if err:
-        fail_at = (rule.get("last_failure_at") or "").strip() if isinstance(
-            rule.get("last_failure_at"), str) else ""
-        succ_at = (rule.get("last_success_at") or "").strip() if isinstance(
-            rule.get("last_success_at"), str) else ""
-        recovered = bool(fail_at and succ_at and succ_at > fail_at)
-        if not recovered:
-            return ("unstable", "yellow")
-    if ok:
-        return ("healthy", "green")
-    return ("not run yet", "blue")
+# The body of this function now lives in health.py, so the panel and the
+# chat/tool layer share ONE definition of "is this rule working right now"
+# instead of each judging by its own reading of the counters. The local name
+# is kept as a thin alias: every call site in this file is unchanged.
+_health_of = health_of
 
 
 def _format_date(iso_str: str) -> str:
